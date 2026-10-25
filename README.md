@@ -2,9 +2,12 @@
 
 # cortico-world-dream
 
+<img src="assets/icon.png" alt="Dream extension icon" width="128" height="128">
+
+English | [简体中文](README_zh.md)
+
 A standalone Cortico World for sleep, dream material collection and a searchable dream archive. Package name: `cortico-world-dream`; World id: `dream`; World API: **6**. The manifest includes the `cortico-world` keyword. The host must support that contract.
 
-[中文说明](README_zh.md)
 
 Dream events ask Coo to use the existing `pet_act` tool for its sleep/standing pose and follow the sleep reply rules. The World controls its own deadlines, searches and records. Poses and replies depend on Coo following the environment prompt; other Worlds' messages are not blocked. This extension does not write to Memory. Optional dream sharing asks Coo to consider sharing a dream through the existing QQ tools.
 

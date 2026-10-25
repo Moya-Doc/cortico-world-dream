@@ -2,9 +2,12 @@
 
 # cortico-world-dream
 
+<img src="assets/icon.png" alt="Dream extension icon" width="128" height="128">
+
+[English](README.md) | 简体中文
+
 一个独立的 Cortico World，提供睡眠、梦境素材采集和可查询的梦境档案。包名为 `cortico-world-dream`，World id 为 `dream`，World API 为 **6**，manifest 包含 `cortico-world` 关键字。宿主需要支持这个接口版本。
 
-[English](README.md)
 
 梦境事件提示 Coo 调用已有的 `pet_act`，切换睡眠或站立动作，并遵守睡眠期间的回复规则。本 World 控制自己的时限、搜索和记录。动作与回复依赖 Coo 遵守环境提示词；它不会拦截其他 World 的消息。本扩展不直接写入 Memory；可选的「梦话」功能提示 Coo 考虑通过已有 QQ 工具分享梦境。
 
