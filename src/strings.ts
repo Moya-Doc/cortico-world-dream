@@ -221,7 +221,7 @@ const qqTalkUi: Record<Language, Values<typeof qqTalkKeys>> = {
 
 const configKeys = ["enabled", "idleEnabled", "idleMinutes", "sleepMinutes", "dreamMode", "dreamProbability", "daydreamEnabled", "daydreamTimes", "sleepScheduleEnabled", "sleepTimes", "qqUsers", "backend", "egoExecutableFile", "browserExecutableFile", "searchUrlTemplate", "allowedDomains", "timeoutMs", "maxResults", "maxDreamMinutes", "dreamTalkEnabled", "dreamTalkGroups", "dreamTalkPrivates"] as const;
 
-const eventKeys = ['sleeping', 'woke', 'requested', 'completed', 'cancelled', 'error', 'share', 'sleep_reply'] as const;
+const eventKeys = ['sleeping', 'woke', 'requested', 'completed', 'cancelled', 'error', 'share', 'sleep_reply', 'message_ref'] as const;
 type Values<K extends readonly string[]> = { [I in keyof K]: string };
 function keyed<K extends readonly string[]>(keys: K, values: Values<K>): Record<K[number], string> {
   return Object.fromEntries(keys.map((key, i) => [key, values[i]])) as Record<K[number], string>;
@@ -409,17 +409,17 @@ const configs: Record<Language, Values<typeof configKeys>> = {
 };
 
 const events: Record<Language, Values<typeof eventKeys>> = {
-  "zh": ["进入睡眠。", "睡眠结束。", "请求采集素材并记录梦境。", "梦境已记录。", "做梦任务已取消。", "做梦任务失败。", "梦话分享建议。", "睡眠中的 QQ 提及。"],
-  "zh-Hant": ["進入睡眠。", "睡眠結束。", "請求蒐集素材並記錄夢境。", "夢境已記錄。", "做夢任務已取消。", "做夢任務失敗。", "夢話分享建議。", "睡眠中的 QQ 提及。"],
-  "en": ["Sleep started.", "Sleep ended.", "Material collection and a dream record were requested.", "The dream was recorded.", "The dream task was cancelled.", "The dream task failed.", "Dream sharing suggested.", "QQ mention received during sleep."],
-  "ja": ["睡眠を開始しました。", "睡眠が終了しました。", "素材の収集と夢の記録を要求しました。", "夢を記録しました。", "夢のタスクを取り消しました。", "夢のタスクに失敗しました。", "寝言の共有が提案されました。", "睡眠中に QQ のメンションを受信しました。"],
-  "ko": ["수면을 시작했습니다.", "수면을 종료했습니다.", "소재 수집과 꿈 기록을 요청했습니다.", "꿈을 기록했습니다.", "꿈 작업을 취소했습니다.", "꿈 작업에 실패했습니다.", "잠꼬대 공유를 제안했습니다.", "수면 중 QQ 멘션을 받았습니다."],
-  "es-419": ["Comenzó el descanso.", "Terminó el descanso.", "Se solicitó recopilar materiales y registrar un sueño.", "El sueño se registró.", "Se canceló la tarea del sueño.", "La tarea del sueño falló.", "Se sugirió compartir un sueño.", "Se recibió una mención de QQ durante el sueño."],
-  "fr": ["Le sommeil a commencé.", "Le sommeil est terminé.", "La collecte de sujets et l’enregistrement d’un rêve ont été demandés.", "Le rêve a été enregistré.", "La tâche de rêve a été annulée.", "La tâche de rêve a échoué.", "Un partage de rêve est suggéré.", "Une mention QQ a été reçue pendant le sommeil."],
-  "de": ["Der Schlaf hat begonnen.", "Der Schlaf ist beendet.", "Themensammlung und Traumaufzeichnung wurden angefordert.", "Der Traum wurde aufgezeichnet.", "Die Traumaufgabe wurde abgebrochen.", "Die Traumaufgabe ist fehlgeschlagen.", "Das Teilen einer Traumgeschichte wurde vorgeschlagen.", "Während des Schlafs ist eine QQ-Erwähnung eingegangen."],
-  "pt-BR": ["O sono começou.", "O sono terminou.", "Foi solicitada a coleta de materiais e o registro de um sonho.", "O sonho foi registrado.", "A tarefa do sonho foi cancelada.", "A tarefa do sonho falhou.", "Foi sugerido compartilhar um sonho.", "Uma menção QQ foi recebida durante o sono."],
-  "it": ["Il sonno è iniziato.", "Il sonno è terminato.", "Sono state richieste la raccolta dei materiali e la registrazione di un sogno.", "Il sogno è stato registrato.", "L’attività del sogno è stata annullata.", "L’attività del sogno non è riuscita.", "È stata proposta la condivisione di un sogno.", "È arrivata una menzione QQ durante il sonno."],
-  "ru": ["Сон начался.", "Сон завершён.", "Запрошены сбор материалов и запись сновидения.", "Сновидение записано.", "Задача сновидения отменена.", "Задача сновидения завершилась ошибкой.", "Предложено рассказать о сне.", "Во время сна получено упоминание в QQ."],
+  "zh": ["进入睡眠。", "睡眠结束。", "请求采集素材并记录梦境。", "梦境已记录。", "做梦任务已取消。", "做梦任务失败。", "梦话分享建议。", "睡眠中的 QQ 提及。", "可供梦境工具引用的原消息编号。"],
+  "zh-Hant": ["進入睡眠。", "睡眠結束。", "請求蒐集素材並記錄夢境。", "夢境已記錄。", "做夢任務已取消。", "做夢任務失敗。", "夢話分享建議。", "睡眠中的 QQ 提及。", "可供夢境工具引用的原訊息編號。"],
+  "en": ["Sleep started.", "Sleep ended.", "Material collection and a dream record were requested.", "The dream was recorded.", "The dream task was cancelled.", "The dream task failed.", "Dream sharing suggested.", "QQ mention received during sleep.", "An original message reference for Dream tools."],
+  "ja": ["睡眠を開始しました。", "睡眠が終了しました。", "素材の収集と夢の記録を要求しました。", "夢を記録しました。", "夢のタスクを取り消しました。", "夢のタスクに失敗しました。", "寝言の共有が提案されました。", "睡眠中に QQ のメンションを受信しました。", "夢のツールで参照できる元メッセージの番号。"],
+  "ko": ["수면을 시작했습니다.", "수면을 종료했습니다.", "소재 수집과 꿈 기록을 요청했습니다.", "꿈을 기록했습니다.", "꿈 작업을 취소했습니다.", "꿈 작업에 실패했습니다.", "잠꼬대 공유를 제안했습니다.", "수면 중 QQ 멘션을 받았습니다.", "꿈 도구에서 참조할 원본 메시지 번호입니다."],
+  "es-419": ["Comenzó el descanso.", "Terminó el descanso.", "Se solicitó recopilar materiales y registrar un sueño.", "El sueño se registró.", "Se canceló la tarea del sueño.", "La tarea del sueño falló.", "Se sugirió compartir un sueño.", "Se recibió una mención de QQ durante el sueño.", "Referencia al mensaje original para las herramientas de sueños."],
+  "fr": ["Le sommeil a commencé.", "Le sommeil est terminé.", "La collecte de sujets et l’enregistrement d’un rêve ont été demandés.", "Le rêve a été enregistré.", "La tâche de rêve a été annulée.", "La tâche de rêve a échoué.", "Un partage de rêve est suggéré.", "Une mention QQ a été reçue pendant le sommeil.", "Référence au message original pour les outils de rêve."],
+  "de": ["Der Schlaf hat begonnen.", "Der Schlaf ist beendet.", "Themensammlung und Traumaufzeichnung wurden angefordert.", "Der Traum wurde aufgezeichnet.", "Die Traumaufgabe wurde abgebrochen.", "Die Traumaufgabe ist fehlgeschlagen.", "Das Teilen einer Traumgeschichte wurde vorgeschlagen.", "Während des Schlafs ist eine QQ-Erwähnung eingegangen.", "Verweis auf die ursprüngliche Nachricht für Traumwerkzeuge."],
+  "pt-BR": ["O sono começou.", "O sono terminou.", "Foi solicitada a coleta de materiais e o registro de um sonho.", "O sonho foi registrado.", "A tarefa do sonho foi cancelada.", "A tarefa do sonho falhou.", "Foi sugerido compartilhar um sonho.", "Uma menção QQ foi recebida durante o sono.", "Referência à mensagem original para as ferramentas de sonhos."],
+  "it": ["Il sonno è iniziato.", "Il sonno è terminato.", "Sono state richieste la raccolta dei materiali e la registrazione di un sogno.", "Il sogno è stato registrato.", "L’attività del sogno è stata annullata.", "L’attività del sogno non è riuscita.", "È stata proposta la condivisione di un sogno.", "È arrivata una menzione QQ durante il sonno.", "Riferimento al messaggio originale per gli strumenti dei sogni."],
+  "ru": ["Сон начался.", "Сон завершён.", "Запрошены сбор материалов и запись сновидения.", "Сновидение записано.", "Задача сновидения отменена.", "Задача сновидения завершилась ошибкой.", "Предложено рассказать о сне.", "Во время сна получено упоминание в QQ.", "Ссылка на исходное сообщение для инструментов сновидений."],
 };
 
 const egoErrorKeys = [

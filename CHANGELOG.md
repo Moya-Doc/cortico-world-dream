@@ -1,5 +1,14 @@
 <!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/model-text.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, src/archive.ts, webui/client.ts, webui/style.css, package.json -->
 
+## 0.11.1
+
+- Supply original message cursors through `dream.message_ref` so Coo can invoke Dream tools for natural-language requests. Bind the original wording and QQ platform message ID to the cursor, deliver user wording as external content, and recheck permissions and expiry at tool invocation.
+- Keep literal commands automatic and deduplicate references across polling and delivery retries. Old messages are not reissued after restart; message references do not enter dream archives or Memory.
+- Allow a local request that automatically woke Coo to supply a new sleep duration, unless a newer interaction or state change supersedes it. Retrying the applied request does not extend sleep.
+- 通过 `dream.message_ref` 提供原消息内部编号，使 Coo 能为自然语言请求调用梦境工具。原话与 QQ 平台消息号绑定到内部编号，用户原话作为外部内容投递，工具调用时重新校验权限和时效。
+- 固定格式命令仍自动处理；重复轮询和投递重试不会重复提供引用。重启后不补发旧消息引用，引用不写入梦境档案或 Memory。
+- 本地请求自动唤醒 Coo 后，仍可用同一条请求设置新的睡眠时长；较新的交互或状态操作会使该例外失效，重试已执行的请求不延长睡眠。
+
 ## 0.11.0
 
 - Move QQ command permissions and sharing controls to the dedicated QQ dream sharing panel. Read enabled group/private candidates through QQ’s public roster panel; support custom IDs, per-row editing and removal, and immediate saves without interrupting dreams.

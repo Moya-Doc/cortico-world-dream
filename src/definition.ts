@@ -31,7 +31,7 @@ export const DREAM: WorldDefinition<DreamConfigSection> = {
       dream_ego_close: { zh: '关闭由 Coo 创建的梦境页面。', en: 'Close an agent-created dream page.' },
       dream_ego_handoff: { zh: '将梦境浏览器控制权交给用户。', en: 'Hand the dream browser to the operator.' },
     }),
-    events: (['sleeping', 'woke', 'requested', 'completed', 'cancelled', 'share', 'sleep_reply'] as const).map(kind => ({
+    events: (['sleeping', 'woke', 'requested', 'completed', 'cancelled', 'share', 'sleep_reply', 'message_ref'] as const).map(kind => ({
       type: `dream.${kind}`, description: { zh: strings('zh').events[kind], en: strings('en').events[kind] },
     })),
   },

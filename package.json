@@ -1,8 +1,8 @@
 {
   "name": "cortico-world-dream",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "type": "module",
-  "description": "Sleep events, daily news materials and searchable dream archives for Cortico",
+  "description": "Let your little whale embark on a dream journey. When she wakes, she can share the wonders of her dreams with you, including through QQ.\n\nKeywords: sleep scheduling, public news sources, and searchable fictional dream archives.\n\nDream journeys can use the default browser, with optional support for ego browser and Tavily for more collection options.\n\nQQ dream sharing has currently been tested only with the official Cortico QQ plugin. Feedback and requests for other integrations are welcome.",
   "license": "MIT",
   "keywords": [
     "cortico-world",
@@ -34,11 +34,11 @@
     "locales": {
       "zh": {
         "displayName": "梦境",
-        "description": "睡眠调度、公开新闻素材与可查询的虚构梦境档案"
+        "description": "让你的大肥鱼完成一次梦境之旅，在梦醒之后她会向你分享奇妙的梦境见闻，还可以通过QQ向你进行汇报。\n\n关键词：睡眠调度、公开新闻素材与可查询的虚构梦境档案\n\n梦境之旅可通过默认浏览器完成，也可选配ego浏览器、tavily，体验更加。\n\n关于QQ梦话，当前仅测试过Cortico官方QQ插件，若有其他需要，欢迎反馈。"
       },
       "en": {
         "displayName": "Dream",
-        "description": "Sleep events, daily news materials and searchable dream archives for Cortico"
+        "description": "Let your little whale embark on a dream journey. When she wakes, she can share the wonders of her dreams with you, including through QQ.\n\nKeywords: sleep scheduling, public news sources, and searchable fictional dream archives.\n\nDream journeys can use the default browser, with optional support for ego browser and Tavily for more collection options.\n\nQQ dream sharing has currently been tested only with the official Cortico QQ plugin. Feedback and requests for other integrations are welcome."
       }
     },
     "icon": "assets/icon.png"
@@ -77,5 +77,9 @@
   "homepage": "https://github.com/Moya-Doc/cortico-world-dream#readme",
   "bugs": {
     "url": "https://github.com/Moya-Doc/cortico-world-dream/issues"
+  },
+  "author": {
+    "name": "Moya-Doc",
+    "url": "https://github.com/Moya-Doc"
   }
 }

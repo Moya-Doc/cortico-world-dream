@@ -12,7 +12,7 @@ import { DREAM_TITLE_MAX_LENGTH, DreamArchive, textInput, type DaydreamAlarm, ty
 import { createSearchClient, SearchError, type SearchClient, type SearchOptions, type SearchResult } from './search.ts';
 import { DreamEgoBrowser } from './ego-browser.ts';
 import type { EgoBridge, BridgeReceipt } from './ego-transport/index.ts';
-import { DREAM_EGO_TOOL_DECLS, DREAM_TOOL_DECLS, MODEL_TEXT } from './model-text.ts';
+import { DREAM_EGO_TOOL_DECLS, DREAM_TOOL_DECLS, MODEL_TEXT, type DreamMessageReference } from './model-text.ts';
 import { egoBrowserErrorText, strings } from './strings.ts';
 import { localClock, sleepCommand } from './time.ts';
 
@@ -87,9 +87,12 @@ export class DreamWorld implements World {
   private cycle: Cycle | null = null;
   private scheduled: Record<string, string> = {};
   private handled = new Set<number>();
+  private referencedMessages = new Set<number>();
   private error: string | null = null;
   private stopped = true;
   private controlCursor = 0;
+  /** A local message may wake mechanically before its explicit sleep intent is interpreted. */
+  private localWakeCursor: number | null = null;
 
   constructor(private readonly opts: DreamWorldOptions) {
     this.ctx = opts.context;
@@ -263,6 +266,7 @@ export class DreamWorld implements World {
   async start(host: WorldHost): Promise<void> {
     if (!this.stopped) return;
     this.host = host; this.stopped = false; this.cursor = this.firstCursor = this.controlCursor = host.store.latestCursor(); this.lastActivity = this.now();
+    this.localWakeCursor = null;
     await this.ego.start();
     const file = join(this.archive.dir, 'state.json');
     if (existsSync(file)) {
@@ -280,7 +284,7 @@ export class DreamWorld implements World {
     this.timer.unref();
   }
   async stop(): Promise<void> {
-    this.stopped = true; this.transition++;
+    this.stopped = true; this.transition++; this.localWakeCursor = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     this.cycle?.controller.abort(); this.cycle = null;
@@ -331,10 +335,42 @@ export class DreamWorld implements World {
   private recentMessage(cursor: unknown): { event: EventEnvelope; body: string } {
     if (!Number.isInteger(cursor) || Number(cursor) <= this.firstCursor) throw new Error('A new incoming message cursor is required.');
     const e = this.host?.store.get(Number(cursor));
-    const message = e && this.message(e);
-    if (!e || !message?.addressed || !Number.isFinite(Date.parse(e.ts)) || this.now() - Date.parse(e.ts) > 300000 || Date.parse(e.ts) > this.now() + 1000)
+    const message = e && this.eligibleRecentMessage(e);
+    if (!e || !message)
       throw new Error('The message is not recent or its sender is not authorized.');
     return { event: e, body: message.body };
+  }
+  private eligibleRecentMessage(event: EventEnvelope): { body: string; addressed: boolean } | null {
+    const message = this.message(event), at = Date.parse(event.ts);
+    return event.cursor > this.firstCursor && message?.addressed && Number.isFinite(at)
+      && this.now() - at <= 300000 && at <= this.now() + 1000 ? message : null;
+  }
+  private async referenceMessage(event: EventEnvelope): Promise<void> {
+    if (this.stopped || !this.host || event.contextDelivery === 'archive-only' || event.cursor < this.controlCursor
+      || this.handled.has(event.cursor) || this.referencedMessages.has(event.cursor)) return;
+    const message = this.eligibleRecentMessage(event);
+    if (!message) return;
+    const platformId = event.source === 'qq' ? event.meta?.message_id : undefined;
+    const messageId = typeof platformId === 'number' && Number.isSafeInteger(platformId) ? String(platformId)
+      : typeof platformId === 'string' && /^-?[0-9]{1,20}$/u.test(platformId) ? platformId : undefined;
+    const reference: DreamMessageReference = { eventCursor: event.cursor, source: event.source, type: event.type,
+      ts: event.ts, body: message.body, ...(messageId !== undefined ? { messageId } : {}) };
+    const host = this.host, before = host.store.latestCursor();
+    this.referencedMessages.add(event.cursor);
+    try {
+      await host.pushEvent({ type: 'dream.message_ref', source: this.id, senderKey: this.id, origin: 'external',
+        ts: nowIso(this.ctx.timezone, new Date(this.now())), text: MODEL_TEXT.messageRef(reference),
+        meta: { eventCursor: event.cursor } }, { trigger: 'flush' });
+    } catch (error) {
+      if (!host.store.range({ source: this.id, fromCursor: before + 1 }).some(item => item.type === 'dream.message_ref' && item.meta?.eventCursor === event.cursor))
+        this.referencedMessages.delete(event.cursor);
+      throw error;
+    }
+  }
+  private newerInteraction(cursor: number): boolean {
+    return ['desktop-pet', 'console', 'qq'].some(source => this.host!.store.range({ source, fromCursor: cursor + 1 }).some(event =>
+      this.message(event)?.addressed || (event.source === 'desktop-pet' && event.type === 'desktop-pet.touch'
+        && event.origin === 'external' && (event.meta?.touch as { woke?: boolean } | undefined)?.woke === true)));
   }
   async tick(): Promise<void> {
     if (this.tickTask) return this.tickTask;
@@ -366,16 +402,25 @@ export class DreamWorld implements World {
         }
         if (!message?.addressed) continue;
         this.lastActivity = this.now();
-        if (e.cursor <= this.controlCursor) continue;
+        if (this.localWakeCursor !== null && e.cursor > this.localWakeCursor) this.localWakeCursor = null;
+        if (e.cursor <= this.controlCursor) {
+          if (e.cursor === this.localWakeCursor) await this.referenceMessage(e);
+          continue;
+        }
         const command = sleepCommand(message.body);
         if (command?.kind === 'sleep') {
           if (!this.handled.has(e.cursor)) { this.handled.add(e.cursor); await this.sleep(command.minutes, e.cursor); }
         } else if ((e.source !== 'qq' || this.sleepUntil === null || command?.kind === 'wake') && (this.sleepUntil !== null || this.cycle || (command?.kind === 'wake' && this.testController))) {
+          const generation = this.transition + 1;
           await this.wake(command?.kind === 'wake' ? MODEL_TEXT.userWake : MODEL_TEXT.messageWake, e.cursor);
+          if (e.source !== 'qq' && !command && !this.stopped && this.transition === generation)
+            this.localWakeCursor = e.cursor;
         }
+        if (!command) await this.referenceMessage(e);
       }
       if (this.stopped) return;
       this.cursor = to;
+      this.referencedMessages.clear();
     }
     if (this.stopped) return;
     if (this.handled.size > 1024) this.handled = new Set([...this.handled].filter(c => c > end - 1024));
@@ -401,6 +446,7 @@ export class DreamWorld implements World {
     this.requireRunning();
     const duration = bounded(minutes, 1, 1440, 'sleep duration');
     const generation = ++this.transition;
+    this.localWakeCursor = null;
     this.controlCursor = Math.max(this.controlCursor, cursor);
     await this.cancelDream(MODEL_TEXT.replaced);
     if (this.stopped || generation !== this.transition) return;
@@ -413,6 +459,7 @@ export class DreamWorld implements World {
     this.requireRunning();
     this.testController?.abort();
     const generation = ++this.transition;
+    this.localWakeCursor = null;
     const hadState = this.sleepUntil !== null || this.cycle !== null;
     this.controlCursor = Math.max(this.controlCursor, cursor);
     this.sleepUntil = null; this.lastActivity = this.now();
@@ -686,7 +733,8 @@ export class DreamWorld implements World {
           if (command?.kind === 'wake') throw new Error('A wake command cannot authorize sleep.');
           const minutes = command?.kind === 'sleep' ? command.minutes : bounded(args.durationMinutes ?? this.cfg.sleepMinutes, 1, 1440, 'sleep duration');
           if (!this.handled.has(event.cursor)) {
-            if (event.cursor <= this.controlCursor) throw new Error('This command predates the current sleep state.');
+            const sameLocalWake = event.cursor === this.controlCursor && event.cursor === this.localWakeCursor && !this.newerInteraction(event.cursor);
+            if (event.cursor <= this.controlCursor && !sameLocalWake) throw new Error('This command predates the current sleep state.');
             this.handled.add(event.cursor); await this.sleep(minutes, event.cursor);
           }
           value = this.modelState(); break;

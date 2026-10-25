@@ -59,6 +59,10 @@ Ordinary QQ messages do not wake Coo. A configured **QQ user** can explicitly re
 
 The current QQ event contract exposes a rendered self-mention marker, not original `at` metadata. Mention detection therefore uses a compatibility fallback and cannot authenticate the original @mention. **QQ users** is this World's command allowlist; it is not the logged-in QQ account or an automatically synchronized Memory “owner” setting. This World does not read Memory documents to infer that permission.
 
+For natural-language requests, `dream.message_ref` supplies the original message’s `eventCursor` to Coo. It binds the original wording to the internal number and includes QQ’s platform `messageId` when available. Coo interprets whether the message requests `dream_sleep`, `dream_wake` or `dream_add_material`; a reference does not establish sleep intent. References cover messages received since the World started, within five minutes and eligible under its existing sender and conversation rules. Literal sleep and wake commands remain automatic. References carry user wording as external content, without copying console PINs or attachments or writing to the dream archive or Memory. Tools revalidate the original message; a QQ platform id, the reference event’s own cursor, or a cursor that expired or predates restart cannot replace an eligible original cursor. Coo is instructed to treat the original and its reference as one message, without an extra chat reply.
+
+A natural-language local message first wakes Coo under the ordinary-message policy. If Coo then interprets that same message as a request for a new sleep duration, its reference remains usable by `dream_sleep`. A newer user interaction or sleep-state operation invalidates this exception. Retrying an already applied sleep tool call does not extend the deadline.
+
 ## Materials and archive
 
 Add a public topic or public link in **Designated materials** for sleep dreams, or ask Coo in eligible chat to save a topic. Chat additions use `dream_add_material` and the incoming event cursor. Topics have a 500-character limit, carry the `指定素材` tag, and remain until deleted in the panel.
