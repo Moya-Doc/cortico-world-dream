@@ -1,0 +1,502 @@
+const uiKeys = [
+  'name', 'panelTitle', 'configTitle', 'promptTitle', 'promptDescription', 'storageTitle',
+  'awake', 'sleeping', 'dreaming', 'until', 'materials', 'addMaterial', 'materialPlaceholder',
+  'removeMaterial', 'designated', 'processed', 'pending', 'archive', 'query', 'queryPlaceholder',
+  'emptyMaterials', 'emptyDreams', 'sources', 'keyTitle', 'keyPresent', 'keyMissing', 'keyPlaceholder',
+  'saveKey', 'keySaved', 'sleep', 'sleepDuration', 'configuredDuration', 'wake', 'minutes',
+  'refresh', 'error', 'loading', 'created',
+  'egoTitle', 'activeBackend', 'noBackend', 'browserTitle', 'egoConfigurationHint',
+  'dreamIndexDescription',
+] as const;
+
+const quotaConfigKeys = ['maxSourcesPerDream', 'maxSourcesPerDay'] as const;
+const quotaConfigLabels: Record<Language, Values<typeof quotaConfigKeys>> = {
+  "zh": [
+    "单次梦境最多采集（条）",
+    "每日最多采集（条）"
+  ],
+  "zh-Hant": [
+    "單次夢境最多蒐集（則）",
+    "每日最多蒐集（則）"
+  ],
+  "en": [
+    "Maximum articles per dream",
+    "Maximum articles per day"
+  ],
+  "ja": [
+    "夢ごとの記事収集上限",
+    "1日の記事収集上限"
+  ],
+  "ko": [
+    "꿈당 최대 기사 수",
+    "하루 최대 기사 수"
+  ],
+  "es-419": [
+    "Máximo de noticias por sueño",
+    "Máximo de noticias por día"
+  ],
+  "fr": [
+    "Articles maximum par rêve",
+    "Articles maximum par jour"
+  ],
+  "de": [
+    "Maximale Artikel pro Traum",
+    "Maximale Artikel pro Tag"
+  ],
+  "pt-BR": [
+    "Máximo de notícias por sonho",
+    "Máximo de notícias por dia"
+  ],
+  "it": [
+    "Articoli massimi per sogno",
+    "Articoli massimi al giorno"
+  ],
+  "ru": [
+    "Максимум новостей за сновидение",
+    "Максимум новостей в день"
+  ]
+};
+const quotaUiKeys = ['quotaCycle', 'quotaToday', 'quotaHint', 'quotaCycleReached', 'quotaDailyReached', 'quotaCollected', 'quotaRemaining'] as const;
+const quotaUi: Record<Language, Values<typeof quotaUiKeys>> = {
+  "zh": [
+    "本次已采集",
+    "今日已采集",
+    "按成功取得的不同新闻来源计数，同一梦境重复读取或分页读取同一网址不重复计数。每日额度按部署时区计算，重启后保留。",
+    "本次梦境已达到采集上限，可以使用已有素材生成梦境。",
+    "今日已达到采集上限，次日恢复；已有素材仍可用于生成梦境。",
+    "已采集",
+    "剩余"
+  ],
+  "zh-Hant": [
+    "本次已蒐集",
+    "今日已蒐集",
+    "依成功取得的不同新聞來源計數，同一夢境重複讀取或分頁讀取同一網址不重複計數。每日額度依部署時區計算，重新啟動後保留。",
+    "本次夢境已達蒐集上限，可使用現有素材產生夢境。",
+    "今日已達蒐集上限，次日恢復；現有素材仍可用於產生夢境。",
+    "已蒐集",
+    "剩餘"
+  ],
+  "en": [
+    "Collected this dream",
+    "Collected today",
+    "Counts successfully retrieved news sources. Repeated reads and pagination within one dream count once per URL. Daily usage follows the deployment time zone and survives restarts.",
+    "This dream has reached its collection limit. Use its existing sources to write the dream.",
+    "The daily collection limit has been reached. It resets on the next local day; existing sources can still be used.",
+    "Collected",
+    "Remaining"
+  ],
+  "ja": [
+    "今回の収集数",
+    "本日の収集数",
+    "取得できたニュース出典を数えます。同じ夢で同じURLを再読・ページ分割しても1件です。日付はデプロイのタイムゾーンに従い、再起動後も使用数を保持します。",
+    "今回の夢の収集上限に達しました。取得済みの素材で夢を作成できます。",
+    "本日の収集上限に達しました。翌日にリセットされます。取得済みの素材は使用できます。",
+    "収集済み",
+    "残り"
+  ],
+  "ko": [
+    "이번 꿈 수집량",
+    "오늘 수집량",
+    "성공적으로 가져온 뉴스 출처를 셉니다. 같은 꿈에서 같은 URL의 재읽기나 페이지 나누기는 한 번만 셉니다. 배포 시간대를 따르며 재시작 후에도 사용량이 유지됩니다.",
+    "이번 꿈의 수집 한도에 도달했습니다. 기존 소재로 꿈을 작성할 수 있습니다.",
+    "일일 수집 한도에 도달했습니다. 다음 날 초기화되며 기존 소재는 계속 사용할 수 있습니다.",
+    "수집 완료",
+    "남은 수량"
+  ],
+  "es-419": [
+    "Recopiladas en este sueño",
+    "Recopiladas hoy",
+    "Cuenta fuentes de noticias obtenidas. Releer o paginar una URL dentro del mismo sueño cuenta una vez. El uso diario sigue la zona horaria del despliegue y se conserva al reiniciar.",
+    "Este sueño alcanzó el límite de recopilación. Usa las fuentes existentes para escribirlo.",
+    "Se alcanzó el límite diario. Se restablece el siguiente día local; las fuentes existentes siguen disponibles.",
+    "Recopiladas",
+    "Restantes"
+  ],
+  "fr": [
+    "Collectés pour ce rêve",
+    "Collectés aujourd’hui",
+    "Compte les sources d’actualité obtenues. Relire ou paginer une URL dans un même rêve compte une seule fois. Le quota quotidien suit le fuseau du déploiement et persiste après redémarrage.",
+    "Ce rêve a atteint sa limite de collecte. Utilisez les sources existantes pour le rédiger.",
+    "La limite quotidienne est atteinte. Elle est réinitialisée le jour local suivant ; les sources existantes restent utilisables.",
+    "Collectés",
+    "Restants"
+  ],
+  "de": [
+    "In diesem Traum gesammelt",
+    "Heute gesammelt",
+    "Zählt abgerufene Nachrichtenquellen. Erneutes Lesen und Seitenausschnitte derselben URL zählen je Traum einmal. Der Tagesverbrauch folgt der Zeitzone der Bereitstellung und bleibt nach Neustarts erhalten.",
+    "Dieser Traum hat sein Sammellimit erreicht. Vorhandene Quellen können für den Traum genutzt werden.",
+    "Das Tageslimit ist erreicht. Es wird am nächsten lokalen Tag zurückgesetzt; vorhandene Quellen bleiben nutzbar.",
+    "Gesammelt",
+    "Verbleibend"
+  ],
+  "pt-BR": [
+    "Coletadas neste sonho",
+    "Coletadas hoje",
+    "Conta fontes de notícias obtidas. Releituras e paginação da mesma URL no mesmo sonho contam uma vez. O uso diário segue o fuso da implantação e permanece após reiniciar.",
+    "Este sonho atingiu o limite de coleta. Use as fontes existentes para escrevê-lo.",
+    "O limite diário foi atingido. Ele é renovado no próximo dia local; as fontes existentes continuam disponíveis.",
+    "Coletadas",
+    "Restantes"
+  ],
+  "it": [
+    "Raccolti per questo sogno",
+    "Raccolti oggi",
+    "Conta le fonti di notizie ottenute. Riletture e paginazione dello stesso URL contano una volta per sogno. L’uso giornaliero segue il fuso dell’installazione e persiste dopo il riavvio.",
+    "Questo sogno ha raggiunto il limite di raccolta. Usa le fonti esistenti per scriverlo.",
+    "Il limite giornaliero è stato raggiunto. Si azzera il giorno locale successivo; le fonti esistenti restano utilizzabili.",
+    "Raccolti",
+    "Rimanenti"
+  ],
+  "ru": [
+    "Собрано для этого сновидения",
+    "Собрано сегодня",
+    "Считаются полученные источники новостей. Повторное чтение и фрагменты одного URL считаются один раз за сновидение. Суточный расход учитывает часовой пояс установки и сохраняется после перезапуска.",
+    "Достигнут лимит сбора для этого сновидения. Используйте уже полученные источники.",
+    "Достигнут суточный лимит. Он обновится на следующий местный день; полученные источники остаются доступными.",
+    "Собрано",
+    "Осталось"
+  ]
+};
+
+const egoConfigKeys = ["egoEnabled", "egoSpaceName", "egoRequestTimeoutMs", "egoMaxChars", "egoRestoreMinimized", "egoConnectionMode", "egoHelperDir"] as const;
+const egoConfigLabels: Record<Language, Values<typeof egoConfigKeys>> = {
+  "zh": ["启用 ego 采集", "专属 Space 名称（留空自动生成）", "ego 命令超时（毫秒）", "ego 返回文字上限（字符）", "截图时恢复最小化窗口", "ego 连接方式", "普通权限助手目录（可留空）"],
+  "zh-Hant": ["啟用 ego 蒐集", "專屬 Space 名稱（留空自動產生）", "ego 命令逾時（毫秒）", "ego 回傳文字上限（字元）", "截圖時還原最小化視窗", "ego 連線方式", "一般權限助手目錄（可留空）"],
+  "en": ["Enable ego collection", "Dedicated Space name (generated if empty)", "ego command timeout (milliseconds)", "ego text limit (characters)", "Restore minimized window for screenshots", "ego connection mode", "Standard-user helper directory (optional)"],
+  "ja": ["ego 収集を有効にする", "専用 Space 名（空欄なら自動生成）", "ego コマンドのタイムアウト（ミリ秒）", "ego の返却文字数上限", "撮影時に最小化ウィンドウを復元", "ego 接続方法", "通常権限ヘルパーのフォルダー（任意）"],
+  "ko": ["ego 수집 활성화", "전용 Space 이름(비우면 자동 생성)", "ego 명령 제한 시간(밀리초)", "ego 반환 문자 수 제한", "스크린샷 촬영 시 최소화 창 복원", "ego 연결 방식", "일반 권한 도우미 폴더(선택)"],
+  "es-419": ["Habilitar recopilación con ego", "Nombre del Space exclusivo (automático si está vacío)", "Tiempo límite de ego (milisegundos)", "Límite de texto de ego (caracteres)", "Restaurar ventana minimizada para capturas", "Modo de conexión de ego", "Carpeta del asistente sin privilegios (opcional)"],
+  "fr": ["Activer la collecte ego", "Nom du Space dédié (généré si vide)", "Délai des commandes ego (millisecondes)", "Limite du texte ego (caractères)", "Restaurer la fenêtre minimisée pour les captures", "Mode de connexion ego", "Dossier de l’assistant sans privilèges (facultatif)"],
+  "de": ["ego-Sammlung aktivieren", "Eigener Space-Name (leer: automatisch)", "ego-Befehlszeitlimit (Millisekunden)", "ego-Textgrenze (Zeichen)", "Minimiertes Fenster für Aufnahmen wiederherstellen", "ego-Verbindungsmodus", "Ordner des Helfers ohne Administratorrechte (optional)"],
+  "pt-BR": ["Ativar coleta com ego", "Nome do Space exclusivo (gerado se vazio)", "Tempo limite do ego (milissegundos)", "Limite de texto do ego (caracteres)", "Restaurar janela minimizada para capturas", "Modo de conexão do ego", "Pasta do assistente sem privilégios (opcional)"],
+  "it": ["Abilita raccolta ego", "Nome dello Space dedicato (generato se vuoto)", "Timeout dei comandi ego (millisecondi)", "Limite del testo ego (caratteri)", "Ripristina la finestra ridotta per le catture", "Modalità di connessione ego", "Cartella assistente senza privilegi (facoltativa)"],
+  "ru": ["Включить сбор через ego", "Имя отдельного Space (пусто: автоматически)", "Тайм-аут команд ego (миллисекунды)", "Лимит текста ego (символы)", "Восстанавливать свёрнутое окно для снимков", "Режим подключения ego", "Каталог помощника с обычными правами (необязательно)"],
+};
+
+const collectorOrderKeys = ["collectorOrderHint", "collectorOrderSave", "collectorMoveUp", "collectorMoveDown", "collectionAttempts", "browserSearchHint", "collectionNoneSelected", "collectorOrderInvalid"] as const;
+const collectorOrderUi: Record<Language, Values<typeof collectorOrderKeys>> = {
+  "zh": ["按勾选顺序尝试；失败或受阻时使用下一种。保存会结束当前采集，下次梦境使用新顺序。", "保存采集顺序", "上移", "下移", "本轮已尝试", "按 360 → 搜狗 → Bing RSS → DuckDuckGo 顺序搜索，取得有效摘要后停止。无需安装浏览器或填写 API Key。", "未选择采集方式", "采集顺序配置无效"],
+  "zh-Hant": ["依勾選順序嘗試；失敗或受阻時使用下一種。儲存會結束目前蒐集，下次夢境使用新順序。", "儲存蒐集順序", "上移", "下移", "本輪已嘗試", "依 360 → 搜狗 → Bing RSS → DuckDuckGo 順序搜尋，取得有效摘要後停止。無需安裝瀏覽器或填寫 API Key。", "未選擇蒐集方式", "蒐集順序配置無效"],
+  "en": ["Try selected methods in order; use the next one after a failure or block. Saving ends the current collection. The next dream uses the new order.", "Save collection order", "Move up", "Move down", "Attempts this round", "Search 360 → Sogou → Bing RSS → DuckDuckGo, stopping at the first usable excerpts. No browser installation or API key is needed.", "No collection methods selected", "Invalid collection order"],
+  "ja": ["選択順に試し、失敗や制限があれば次の方法を使用します。保存すると現在の収集が終了し、次の夢から新しい順序を使います。", "収集順序を保存", "上へ移動", "下へ移動", "今回の試行", "360 → Sogou → Bing RSS → DuckDuckGo の順に検索し、有効な要約が得られたら終了します。ブラウザーのインストールや API Key は不要です。", "収集方法が選択されていません", "収集順序の設定が無効です"],
+  "ko": ["선택한 순서로 시도하며 실패하거나 차단되면 다음 방법을 사용합니다. 저장하면 현재 수집이 끝나고 다음 꿈부터 새 순서를 사용합니다.", "수집 순서 저장", "위로 이동", "아래로 이동", "이번 시도", "360 → Sogou → Bing RSS → DuckDuckGo 순으로 검색하여 유효한 요약을 얻으면 중단합니다. 브라우저 설치나 API Key가 필요하지 않습니다.", "선택한 수집 방법 없음", "수집 순서 설정이 올바르지 않습니다"],
+  "es-419": ["Se prueban los métodos seleccionados en orden; si uno falla o se bloquea, se usa el siguiente. Guardar termina la recopilación actual. El próximo sueño usa el nuevo orden.", "Guardar orden de recopilación", "Subir", "Bajar", "Intentos de esta ronda", "Busca en 360 → Sogou → Bing RSS → DuckDuckGo hasta obtener extractos útiles. No requiere instalar un navegador ni una API Key.", "No hay métodos de recopilación seleccionados", "Orden de recopilación no válido"],
+  "fr": ["Les méthodes sélectionnées sont essayées dans l’ordre ; en cas d’échec ou de blocage, la suivante est utilisée. Enregistrer termine la collecte en cours. Le prochain rêve utilise le nouvel ordre.", "Enregistrer l’ordre de collecte", "Monter", "Descendre", "Tentatives de cette collecte", "Recherche via 360 → Sogou → Bing RSS → DuckDuckGo jusqu’aux premiers extraits utilisables. Aucun navigateur à installer ni clé API nécessaire.", "Aucune méthode de collecte sélectionnée", "Ordre de collecte invalide"],
+  "de": ["Ausgewählte Methoden werden der Reihe nach versucht. Bei Fehlern oder Blockaden folgt die nächste. Speichern beendet die aktuelle Sammlung. Der nächste Traum nutzt die neue Reihenfolge.", "Sammelreihenfolge speichern", "Nach oben", "Nach unten", "Versuche dieser Runde", "Suche über 360 → Sogou → Bing RSS → DuckDuckGo bis zu den ersten nutzbaren Auszügen. Keine Browserinstallation und kein API-Schlüssel erforderlich.", "Keine Sammelmethode ausgewählt", "Ungültige Sammelreihenfolge"],
+  "pt-BR": ["Os métodos selecionados são tentados em ordem; em caso de falha ou bloqueio, usa-se o próximo. Salvar encerra a coleta atual. O próximo sonho usa a nova ordem.", "Salvar ordem de coleta", "Mover para cima", "Mover para baixo", "Tentativas desta rodada", "Pesquisa em 360 → Sogou → Bing RSS → DuckDuckGo até obter trechos utilizáveis. Não exige instalar um navegador nem informar uma API Key.", "Nenhum método de coleta selecionado", "Ordem de coleta inválida"],
+  "it": ["I metodi selezionati vengono provati in ordine; in caso di errore o blocco si passa al successivo. Il salvataggio termina la raccolta attuale. Il prossimo sogno usa il nuovo ordine.", "Salva ordine di raccolta", "Sposta su", "Sposta giù", "Tentativi di questo ciclo", "Cerca con 360 → Sogou → Bing RSS → DuckDuckGo fino ai primi estratti utilizzabili. Non occorre installare un browser né inserire una API Key.", "Nessun metodo di raccolta selezionato", "Ordine di raccolta non valido"],
+  "ru": ["Выбранные способы пробуются по порядку; при ошибке или блокировке используется следующий. Сохранение завершает текущий сбор. Следующее сновидение использует новый порядок.", "Сохранить порядок сбора", "Переместить вверх", "Переместить вниз", "Попытки этого цикла", "Поиск через 360 → Sogou → Bing RSS → DuckDuckGo до первых подходящих выдержек. Установка браузера и ключ API не требуются.", "Способы сбора не выбраны", "Неверный порядок сбора"],
+};
+
+const dreamManagementKeys = ["groupDreamTalkTitle", "qqUsersDescription", "daydreamEnabledDescription", "dreamTalkEnabledDescription", "dreamTalkGroupsDescription", "daydreamLabel", "daydreamAlarms", "daydreamAlarmTime", "daydreamAlarmTopic", "daydreamAlarmAdd", "daydreamAlarmSave", "daydreamAlarmEdit", "daydreamAlarmRemove", "daydreamAlarmEmpty", "daydreamAlarmTopicMissing", "daydreamAlarmDisabled", "daydreamAlarmHint", "removeDream", "removeDreamConfirm", "confirmDelete", "cancelAction", "collectionGeneralSettingsHint", "backendActive"] as const;
+const dreamManagementUi: Record<Language, Values<typeof dreamManagementKeys>> = {
+  "zh": ["梦话分享", "填写有权控制梦境的主人 QQ 号，多个号码用逗号或空格分隔。这些号码不是 Coo 的登录账号，也不会从 Memory 自动读取。", "在睡眠面板的“白日梦闹钟与素材”中设置触发时间和固定话题。", "梦境记录完成后，允许 Coo 向白名单中的群或私聊用户分享梦话。", "仅填写 QQ 群号，用逗号或空格分隔。留空时不向任何群分享；此列表与主人权限分开。", "白日梦", "白日梦闹钟与素材", "触发时间", "固定话题", "添加闹钟", "保存闹钟", "编辑", "删除闹钟", "尚未添加白日梦闹钟", "请填写固定话题", "白日梦已关闭，可在配置页开启", "每个闹钟每天按设定时间重复使用固定话题，不受指定素材今日处理状态影响。", "删除梦境", "删除这条梦境记录？此操作无法撤销。", "确认删除", "取消", "单次与每日上限、搜索超时及结果数量请在“配置”页修改。采集方式和顺序在“睡眠与梦境”页设置。", "当前使用"],
+  "zh-Hant": ["夢話分享", "填寫有權控制夢境的主人 QQ 號，多個號碼以逗號或空格分隔。這些號碼不是 Coo 的登入帳號，也不會從 Memory 自動讀取。", "在睡眠面板的「白日夢鬧鐘與素材」中設定觸發時間與固定話題。", "夢境記錄完成後，允許 Coo 向白名單中的群組或私聊使用者分享夢話。", "僅填寫 QQ 群號，以逗號或空格分隔。留空時不向任何群組分享；此清單與主人權限分開。", "白日夢", "白日夢鬧鐘與素材", "觸發時間", "固定話題", "新增鬧鐘", "儲存鬧鐘", "編輯", "刪除鬧鐘", "尚未新增白日夢鬧鐘", "請填寫固定話題", "白日夢已關閉，可在配置頁開啟", "每個鬧鐘每天按設定時間重複使用固定話題，不受指定素材今日處理狀態影響。", "刪除夢境", "刪除此夢境記錄？此操作無法復原。", "確認刪除", "取消", "單次與每日上限、搜尋逾時及結果數量請在「配置」頁修改。蒐集方式和順序在「睡眠與夢境」頁設定。", "目前使用"],
+  "en": ["Dream sharing", "Enter the owner QQ IDs allowed to control dreams, separated by commas or spaces. These are not Coo’s login account and are not read automatically from Memory.", "Set trigger times and fixed topics under “Daydream alarms and topics” in the sleep panel.", "Allow Coo to share dream stories with allowed groups or private recipients after a dream is recorded.", "Enter QQ group numbers only, separated by commas or spaces. An empty list allows no groups. This list is separate from owner permissions.", "Daydream", "Daydream alarms and topics", "Trigger time", "Fixed topic", "Add alarm", "Save alarm", "Edit", "Delete alarm", "No daydream alarms yet", "Enter a fixed topic", "Daydreams are disabled. Enable them in Configuration.", "Each alarm reuses its fixed topic at the scheduled time each day, independently of designated materials’ daily processing status.", "Delete dream", "Delete this dream record? This cannot be undone.", "Confirm deletion", "Cancel", "Edit per-dream and daily limits, search timeout and result count in Configuration. Choose collection methods and their order in Sleep and dreams.", "Currently using"],
+  "ja": ["寝言の共有", "夢を操作できる主人の QQ ID をカンマまたは空白で区切って入力します。Coo のログインアカウントではなく、Memory から自動取得もしません。", "睡眠パネルの「白昼夢のアラームと話題」で時刻と固定の話題を設定します。", "夢の記録後、許可したグループや個人への夢の共有を Coo に許可します。", "QQ グループ番号のみをカンマまたは空白で区切って入力します。空欄なら共有しません。主人の操作権限とは別のリストです。", "白昼夢", "白昼夢のアラームと話題", "実行時刻", "固定の話題", "アラームを追加", "アラームを保存", "編集", "アラームを削除", "白昼夢のアラームはありません", "固定の話題を入力してください", "白昼夢は無効です。設定ページで有効にできます。", "各アラームは毎日設定時刻に同じ話題を使用します。指定素材の当日の処理状況には影響されません。", "夢を削除", "この夢の記録を削除しますか？元に戻せません。", "削除を確認", "キャンセル", "夢ごと・1日ごとの上限、検索タイムアウト、結果数は設定ページで変更できます。収集方法と順序は「睡眠と夢」で設定します。", "使用中"],
+  "ko": ["잠꼬대 공유", "꿈을 제어할 수 있는 주인의 QQ ID를 쉼표나 공백으로 구분해 입력하세요. Coo의 로그인 계정이 아니며 Memory에서 자동으로 읽지 않습니다.", "수면 패널의 “백일몽 알람과 주제”에서 실행 시각과 고정 주제를 설정하세요.", "꿈 기록 후 허용된 그룹이나 개인에게 Coo가 꿈을 공유하도록 허용합니다.", "QQ 그룹 번호만 쉼표나 공백으로 구분해 입력하세요. 비어 있으면 어떤 그룹에도 공유하지 않습니다. 주인 권한 목록과 별개입니다.", "백일몽", "백일몽 알람과 주제", "실행 시각", "고정 주제", "알람 추가", "알람 저장", "편집", "알람 삭제", "아직 백일몽 알람이 없습니다", "고정 주제를 입력하세요", "백일몽이 꺼져 있습니다. 설정 페이지에서 켜세요.", "각 알람은 매일 설정 시각에 고정 주제를 다시 사용합니다. 지정 소재의 당일 처리 상태와 무관합니다.", "꿈 삭제", "이 꿈 기록을 삭제할까요? 되돌릴 수 없습니다.", "삭제 확인", "취소", "꿈당·일일 한도, 검색 제한 시간과 결과 수는 설정에서 변경하세요. 수집 방법과 순서는 수면과 꿈에서 설정하세요.", "현재 사용"],
+  "es-419": ["Relatos de sueños", "Ingresa los IDs QQ del dueño que pueden controlar los sueños, separados por comas o espacios. No son la cuenta de acceso de Coo ni se leen automáticamente de Memory.", "Configura horarios y temas fijos en “Alarmas y temas de ensueños” del panel de descanso.", "Permite que Coo comparta relatos con grupos o destinatarios privados autorizados después de registrar un sueño.", "Ingresa solo números de grupos QQ, separados por comas o espacios. Una lista vacía no permite compartir con ningún grupo. Esta lista es independiente de los permisos del dueño.", "Ensueño", "Alarmas y temas de ensueños", "Hora de activación", "Tema fijo", "Agregar alarma", "Guardar alarma", "Editar", "Eliminar alarma", "Aún no hay alarmas de ensueños", "Ingresa un tema fijo", "Los ensueños están deshabilitados. Habilítalos en Configuración.", "Cada alarma reutiliza su tema fijo a la hora programada cada día, sin depender del estado diario de procesamiento de los materiales indicados.", "Eliminar sueño", "¿Eliminar este registro de sueño? No se puede deshacer.", "Confirmar eliminación", "Cancelar", "Edita los límites por sueño y por día, el tiempo de espera y la cantidad de resultados en Configuración. Elige los métodos y su orden en Sueño y sueños.", "En uso"],
+  "fr": ["Partage de rêves", "Saisissez les identifiants QQ du propriétaire autorisés à contrôler les rêves, séparés par des virgules ou des espaces. Ce ne sont pas les identifiants de connexion de Coo ; ils ne sont pas lus automatiquement dans Memory.", "Définissez les heures et les sujets fixes dans « Alarmes et sujets des rêveries » du panneau de sommeil.", "Autoriser Coo à partager des récits avec les groupes ou destinataires privés permis après l’enregistrement d’un rêve.", "Saisissez uniquement des numéros de groupes QQ, séparés par des virgules ou des espaces. Une liste vide interdit tout partage. Cette liste est distincte des droits du propriétaire.", "Rêverie", "Alarmes et sujets des rêveries", "Heure de déclenchement", "Sujet fixe", "Ajouter une alarme", "Enregistrer l’alarme", "Modifier", "Supprimer l’alarme", "Aucune alarme de rêverie", "Saisissez un sujet fixe", "Les rêveries sont désactivées. Activez-les dans Configuration.", "Chaque alarme reprend son sujet fixe à l’heure prévue chaque jour, indépendamment du traitement quotidien des sujets désignés.", "Supprimer le rêve", "Supprimer cet enregistrement de rêve ? Cette action est irréversible.", "Confirmer la suppression", "Annuler", "Modifiez les limites par rêve et par jour, le délai de recherche et le nombre de résultats dans Configuration. Choisissez les méthodes et leur ordre dans Sommeil et rêves.", "Actuellement utilisé"],
+  "de": ["Traumgeschichten", "Geben Sie die QQ-IDs des Besitzers mit Traumsteuerungsrechten ein, getrennt durch Kommas oder Leerzeichen. Dies sind keine Anmeldedaten von Coo; sie werden nicht automatisch aus Memory gelesen.", "Legen Sie Zeiten und feste Themen unter „Tagtraum-Wecker und Themen“ im Schlafbereich fest.", "Coo darf nach dem Speichern eines Traums Geschichten mit erlaubten Gruppen oder privaten Empfängern teilen.", "Geben Sie nur QQ-Gruppennummern ein, getrennt durch Kommas oder Leerzeichen. Eine leere Liste erlaubt keine Gruppen. Diese Liste ist unabhängig von den Besitzerrechten.", "Tagtraum", "Tagtraum-Wecker und Themen", "Auslösezeit", "Festes Thema", "Wecker hinzufügen", "Wecker speichern", "Bearbeiten", "Wecker löschen", "Noch keine Tagtraum-Wecker", "Geben Sie ein festes Thema ein", "Tagträume sind deaktiviert. Aktivieren Sie sie in den Einstellungen.", "Jeder Wecker verwendet täglich zur festgelegten Zeit sein festes Thema, unabhängig vom täglichen Bearbeitungsstand der vorgegebenen Themen.", "Traum löschen", "Diesen Traumeintrag löschen? Dies kann nicht rückgängig gemacht werden.", "Löschen bestätigen", "Abbrechen", "Grenzen pro Traum und Tag, Suchzeitlimit und Ergebnisanzahl stehen unter Konfiguration. Methoden und Reihenfolge stehen unter Schlaf und Träume.", "Aktuell verwendet"],
+  "pt-BR": ["Compartilhamento de sonhos", "Informe os IDs QQ do dono autorizados a controlar os sonhos, separados por vírgulas ou espaços. Não são a conta de acesso do Coo nem são lidos automaticamente de Memory.", "Defina horários e temas fixos em “Alarmes e temas dos devaneios” no painel de sono.", "Permite que Coo compartilhe relatos com grupos ou destinatários privados autorizados após registrar um sonho.", "Informe apenas números de grupos QQ, separados por vírgulas ou espaços. Uma lista vazia não permite compartilhar com nenhum grupo. Esta lista é independente das permissões do dono.", "Devaneio", "Alarmes e temas dos devaneios", "Horário de ativação", "Tema fixo", "Adicionar alarme", "Salvar alarme", "Editar", "Excluir alarme", "Nenhum alarme de devaneio ainda", "Informe um tema fixo", "Os devaneios estão desativados. Ative-os em Configurações.", "Cada alarme reutiliza seu tema fixo no horário definido a cada dia, independentemente do processamento diário dos materiais indicados.", "Excluir sonho", "Excluir este registro de sonho? Isso não pode ser desfeito.", "Confirmar exclusão", "Cancelar", "Edite os limites por sonho e por dia, o tempo de busca e o número de resultados em Configurações. Escolha os métodos e sua ordem em Sono e sonhos.", "Em uso"],
+  "it": ["Condivisione dei sogni", "Inserisci gli ID QQ del proprietario autorizzati a controllare i sogni, separati da virgole o spazi. Non sono l’account di accesso di Coo e non vengono letti automaticamente da Memory.", "Imposta orari e argomenti fissi in “Sveglie e argomenti dei sogni a occhi aperti” nel pannello del sonno.", "Consenti a Coo di condividere racconti con gruppi o destinatari privati autorizzati dopo aver registrato un sogno.", "Inserisci solo numeri di gruppi QQ, separati da virgole o spazi. Un elenco vuoto non consente alcun gruppo. Questo elenco è distinto dai permessi del proprietario.", "Sogno a occhi aperti", "Sveglie e argomenti dei sogni a occhi aperti", "Ora di attivazione", "Argomento fisso", "Aggiungi sveglia", "Salva sveglia", "Modifica", "Elimina sveglia", "Nessuna sveglia per sogni a occhi aperti", "Inserisci un argomento fisso", "I sogni a occhi aperti sono disattivati. Attivali in Configurazione.", "Ogni sveglia riutilizza il suo argomento fisso all’ora prevista ogni giorno, indipendentemente dallo stato di elaborazione giornaliero dei materiali indicati.", "Elimina sogno", "Eliminare questa registrazione di sogno? L’azione è irreversibile.", "Conferma eliminazione", "Annulla", "Modifica i limiti per sogno e giornalieri, il timeout e il numero di risultati in Configurazione. Scegli metodi e ordine in Sonno e sogni.", "Attualmente in uso"],
+  "ru": ["Рассказы о снах", "Введите QQ ID хозяина, которым разрешено управлять сновидениями, через запятую или пробел. Это не учётная запись Coo; номера не считываются автоматически из Memory.", "Задайте время и постоянные темы в разделе «Будильники и темы дневных снов» на панели сна.", "Разрешить Coo делиться рассказами с разрешёнными группами или личными получателями после записи сновидения.", "Введите только номера групп QQ через запятую или пробел. Пустой список не разрешает ни одну группу. Этот список не связан с правами хозяина.", "Дневной сон", "Будильники и темы дневных снов", "Время запуска", "Постоянная тема", "Добавить будильник", "Сохранить будильник", "Изменить", "Удалить будильник", "Будильников для дневных снов пока нет", "Введите постоянную тему", "Дневные сны отключены. Включите их в настройках.", "Каждый будильник ежедневно использует постоянную тему в заданное время независимо от дневного состояния обработки заданных материалов.", "Удалить сон", "Удалить эту запись сна? Это действие нельзя отменить.", "Подтвердить удаление", "Отмена", "Лимиты на сновидение и день, тайм-аут и число результатов задаются в настройках. Способы и порядок сбора задаются на странице сна и сновидений.", "Сейчас используется"],
+};
+
+const qqTalkKeys = ["qqTalkTitle", "qqTalkRequiresPlugin", "qqTalkPermissions", "qqTalkSavePermissions", "qqTalkGroups", "qqTalkPrivates", "qqTalkRosterLoading", "qqTalkRosterLoaded", "qqTalkRosterUnavailable", "qqTalkRosterEmpty", "qqTalkSendHint", "qqTalkSharingHint", "qqTalkSelect", "qqTalkCustom", "qqTalkEnterId", "qqTalkAdd", "qqTalkSave", "qqTalkRemove", "qqTalkInvalidId", "qqTalkDuplicateId", "qqTalkSaved", "qqTalkSaveFailed", "qqTalkInvalidConfig"] as const;
+const qqTalkUi: Record<Language, Values<typeof qqTalkKeys>> = {
+  "zh": ["QQ梦话", "需搭配 QQ 插件使用。", "QQ 指令权限", "保存指令权限", "QQ群梦话白名单", "私聊 QQ 号白名单", "正在读取 QQ 监听名单", "候选项来自 QQ 插件已启用的监听名单。", "无法读取 QQ 监听名单，可以添加自定义号码。", "QQ 监听名单中没有已启用的号码，可以添加自定义号码。", "实际发送仍需通过 QQ 插件的监听名单校验。", "睡眠梦境醒来后、白日梦完成后，由 Coo 判断是否分享。梦话接收人不获得睡眠指令权限。", "请选择号码", "添加自定义", "填写 QQ 号码", "添加", "保存", "删除", "请填写不超过 20 位的有效 QQ 号码。", "此号码已在白名单中。", "已保存", "保存失败，请重试。", "QQ 配置无效，请检查开关和号码。"],
+  "zh-Hant": ["QQ夢話", "需搭配 QQ 插件使用。", "QQ 指令權限", "儲存指令權限", "QQ群夢話白名單", "私聊 QQ 號白名單", "正在讀取 QQ 監聽清單", "候選項來自 QQ 插件已啟用的監聽清單。", "無法讀取 QQ 監聽清單，可新增自訂號碼。", "QQ 監聽清單沒有已啟用的號碼，可新增自訂號碼。", "實際傳送仍須通過 QQ 插件的監聽清單驗證。", "睡眠夢境醒來後、白日夢完成後，由 Coo 判斷是否分享。夢話接收人不獲得睡眠指令權限。", "請選擇號碼", "新增自訂", "填寫 QQ 號碼", "新增", "儲存", "刪除", "請填寫不超過 20 位的有效 QQ 號碼。", "此號碼已在白名單中。", "已儲存", "儲存失敗，請重試。", "QQ 配置無效，請檢查開關與號碼。"],
+  "en": ["QQ dream sharing", "Requires the QQ plugin.", "QQ command permissions", "Save command permissions", "QQ group dream recipients", "Private QQ dream recipients", "Reading the QQ watched list", "Candidates come from enabled entries in the QQ plugin’s watched list.", "The QQ watched list is unavailable. You can add custom numbers.", "The QQ watched list has no enabled numbers. You can add custom numbers.", "Sending still requires approval by the QQ plugin’s watched list.", "Coo decides whether to share after waking from a sleep dream or completing a daydream. Dream recipients gain no sleep command permissions.", "Choose a number", "Add custom", "Enter a QQ number", "Add", "Save", "Remove", "Enter a valid QQ number with at most 20 digits.", "This number is already in the allowlist.", "Saved", "Save failed. Please retry.", "Invalid QQ settings. Check the toggle and numbers."],
+  "ja": ["QQで夢を共有", "QQ プラグインが必要です。", "QQ コマンド権限", "コマンド権限を保存", "夢を共有する QQ グループ", "夢を共有する個人の QQ 番号", "QQ の監視リストを読み込み中", "候補は QQ プラグインの監視リストで有効な項目です。", "QQ の監視リストを取得できません。番号を手動で追加できます。", "QQ の監視リストに有効な番号がありません。番号を手動で追加できます。", "送信時には QQ プラグインの監視リストによる確認が必要です。", "睡眠から目覚めた後、または白昼夢の完了後に Coo が共有するか判断します。共有先に睡眠コマンドの権限は付与されません。", "番号を選択", "手動で追加", "QQ 番号を入力", "追加", "保存", "削除", "20 桁以内の有効な QQ 番号を入力してください。", "この番号はすでに許可リストにあります。", "保存しました", "保存に失敗しました。再試行してください。", "QQ の設定が無効です。切り替えと番号を確認してください。"],
+  "ko": ["QQ 꿈 공유", "QQ 플러그인이 필요합니다.", "QQ 명령 권한", "명령 권한 저장", "꿈을 공유할 QQ 그룹", "꿈을 공유할 개인 QQ 번호", "QQ 수신 목록을 읽는 중", "후보는 QQ 플러그인 수신 목록의 활성 항목입니다.", "QQ 수신 목록을 읽을 수 없습니다. 번호를 직접 추가할 수 있습니다.", "QQ 수신 목록에 활성 번호가 없습니다. 번호를 직접 추가할 수 있습니다.", "전송 시 QQ 플러그인의 수신 목록 검증을 통과해야 합니다.", "수면에서 깨어나거나 백일몽이 끝난 후 Coo가 공유 여부를 판단합니다. 수신자에게 수면 명령 권한은 부여되지 않습니다.", "번호 선택", "직접 추가", "QQ 번호 입력", "추가", "저장", "삭제", "20자리 이하의 유효한 QQ 번호를 입력하세요.", "이미 허용 목록에 있는 번호입니다.", "저장됨", "저장하지 못했습니다. 다시 시도하세요.", "QQ 설정이 잘못되었습니다. 스위치와 번호를 확인하세요."],
+  "es-419": ["Sueños por QQ", "Requiere el plugin de QQ.", "Permisos de comandos QQ", "Guardar permisos", "Grupos QQ para compartir sueños", "Destinatarios privados QQ", "Leyendo la lista de conversaciones QQ", "Las opciones son entradas habilitadas de la lista del plugin QQ.", "La lista de QQ no está disponible. Puedes agregar números personalizados.", "La lista de QQ no tiene números habilitados. Puedes agregar números personalizados.", "El envío debe cumplir la lista de conversaciones permitidas del plugin QQ.", "Coo decide si compartir al despertar o al terminar un ensueño. Los destinatarios no reciben permisos de comandos de sueño.", "Elige un número", "Agregar personalizado", "Ingresa un número QQ", "Agregar", "Guardar", "Eliminar", "Ingresa un número QQ válido de hasta 20 dígitos.", "Este número ya está en la lista permitida.", "Guardado", "No se pudo guardar. Inténtalo de nuevo.", "Configuración QQ inválida. Revisa el interruptor y los números."],
+  "fr": ["Rêves sur QQ", "Nécessite le plugin QQ.", "Autorisations des commandes QQ", "Enregistrer les autorisations", "Groupes QQ destinataires des rêves", "Destinataires privés QQ", "Lecture de la liste QQ surveillée", "Les choix proviennent des entrées activées dans la liste du plugin QQ.", "La liste QQ est indisponible. Vous pouvez ajouter des numéros personnalisés.", "La liste QQ ne contient aucun numéro activé. Vous pouvez ajouter des numéros personnalisés.", "L’envoi reste soumis à la liste autorisée du plugin QQ.", "Coo décide de partager au réveil ou après une rêverie. Les destinataires ne reçoivent aucun droit sur les commandes de sommeil.", "Choisir un numéro", "Ajouter un numéro personnalisé", "Saisir un numéro QQ", "Ajouter", "Enregistrer", "Supprimer", "Saisissez un numéro QQ valide de 20 chiffres maximum.", "Ce numéro figure déjà dans la liste autorisée.", "Enregistré", "Échec de l’enregistrement. Réessayez.", "Configuration QQ invalide. Vérifiez le bouton et les numéros."],
+  "de": ["Träume über QQ", "Erfordert das QQ-Plugin.", "QQ-Befehlsrechte", "Befehlsrechte speichern", "QQ-Gruppen für Traumgeschichten", "Private QQ-Empfänger", "QQ-Beobachtungsliste wird gelesen", "Die Auswahl stammt aus aktivierten Einträgen der QQ-Beobachtungsliste.", "Die QQ-Liste ist nicht verfügbar. Eigene Nummern können hinzugefügt werden.", "Die QQ-Liste enthält keine aktivierten Nummern. Eigene Nummern können hinzugefügt werden.", "Der Versand muss weiterhin durch die QQ-Beobachtungsliste erlaubt sein.", "Coo entscheidet nach dem Aufwachen oder einem Tagtraum über das Teilen. Empfänger erhalten keine Schlafbefehlsrechte.", "Nummer auswählen", "Eigene Nummer hinzufügen", "QQ-Nummer eingeben", "Hinzufügen", "Speichern", "Entfernen", "Geben Sie eine gültige QQ-Nummer mit höchstens 20 Ziffern ein.", "Diese Nummer steht bereits auf der Erlaubnisliste.", "Gespeichert", "Speichern fehlgeschlagen. Erneut versuchen.", "Ungültige QQ-Konfiguration. Schalter und Nummern prüfen."],
+  "pt-BR": ["Sonhos no QQ", "Requer o plugin QQ.", "Permissões de comandos QQ", "Salvar permissões", "Grupos QQ para compartilhar sonhos", "Destinatários privados QQ", "Lendo a lista monitorada do QQ", "As opções vêm das entradas habilitadas na lista do plugin QQ.", "A lista do QQ está indisponível. Você pode adicionar números personalizados.", "A lista do QQ não tem números habilitados. Você pode adicionar números personalizados.", "O envio ainda precisa ser permitido pela lista monitorada do plugin QQ.", "Coo decide se deve compartilhar ao acordar ou ao concluir um devaneio. Destinatários não recebem permissões de comandos de sono.", "Escolha um número", "Adicionar personalizado", "Informe um número QQ", "Adicionar", "Salvar", "Remover", "Informe um número QQ válido com até 20 dígitos.", "Este número já está na lista de permitidos.", "Salvo", "Não foi possível salvar. Tente novamente.", "Configuração QQ inválida. Verifique a opção e os números."],
+  "it": ["Sogni su QQ", "Richiede il plugin QQ.", "Permessi dei comandi QQ", "Salva i permessi", "Gruppi QQ destinatari dei sogni", "Destinatari privati QQ", "Lettura dell’elenco QQ monitorato", "Le opzioni provengono dalle voci abilitate nell’elenco del plugin QQ.", "L’elenco QQ non è disponibile. Puoi aggiungere numeri personalizzati.", "L’elenco QQ non contiene numeri abilitati. Puoi aggiungere numeri personalizzati.", "L’invio deve comunque essere consentito dall’elenco monitorato del plugin QQ.", "Coo decide se condividere dopo il risveglio o al termine di un sogno a occhi aperti. I destinatari non ricevono permessi sui comandi del sonno.", "Scegli un numero", "Aggiungi personalizzato", "Inserisci un numero QQ", "Aggiungi", "Salva", "Rimuovi", "Inserisci un numero QQ valido di massimo 20 cifre.", "Questo numero è già nell’elenco consentito.", "Salvato", "Salvataggio non riuscito. Riprova.", "Configurazione QQ non valida. Controlla l’interruttore e i numeri."],
+  "ru": ["Сны в QQ", "Требуется плагин QQ.", "Права команд QQ", "Сохранить права команд", "Группы QQ для рассказов о снах", "Личные получатели QQ", "Чтение списка отслеживаемых бесед QQ", "Варианты взяты из включённых записей списка плагина QQ.", "Список QQ недоступен. Можно добавить номера вручную.", "В списке QQ нет включённых номеров. Можно добавить их вручную.", "Отправка также должна быть разрешена списком плагина QQ.", "Coo решает, делиться ли сном после пробуждения или завершения дневного сна. Получатели не получают прав на команды сна.", "Выберите номер", "Добавить свой номер", "Введите номер QQ", "Добавить", "Сохранить", "Удалить", "Введите действительный номер QQ длиной до 20 цифр.", "Этот номер уже есть в списке разрешённых.", "Сохранено", "Не удалось сохранить. Повторите попытку.", "Некорректные настройки QQ. Проверьте переключатель и номера."],
+};
+
+const configKeys = ["enabled", "idleEnabled", "idleMinutes", "sleepMinutes", "dreamMode", "dreamProbability", "daydreamEnabled", "daydreamTimes", "sleepScheduleEnabled", "sleepTimes", "qqUsers", "backend", "egoExecutableFile", "browserExecutableFile", "searchUrlTemplate", "allowedDomains", "timeoutMs", "maxResults", "maxDreamMinutes", "dreamTalkEnabled", "dreamTalkGroups", "dreamTalkPrivates"] as const;
+
+const eventKeys = ['sleeping', 'woke', 'requested', 'completed', 'cancelled', 'error', 'share', 'sleep_reply'] as const;
+type Values<K extends readonly string[]> = { [I in keyof K]: string };
+function keyed<K extends readonly string[]>(keys: K, values: Values<K>): Record<K[number], string> {
+  return Object.fromEntries(keys.map((key, i) => [key, values[i]])) as Record<K[number], string>;
+}
+
+export type ConfigLabelKey = typeof configKeys[number] | typeof egoConfigKeys[number] | typeof quotaConfigKeys[number];
+export type DreamStrings = Record<typeof uiKeys[number] | typeof setupKeys[number] | typeof collectionKeys[number] | typeof egoUiKeys[number] | typeof quotaUiKeys[number] | typeof dreamManagementKeys[number] | typeof collectorOrderKeys[number] | typeof qqTalkKeys[number], string> & {
+  events: Record<typeof eventKeys[number], string>;
+};
+export const DREAM_LANGUAGES = ['zh', 'zh-Hant', 'en', 'ja', 'ko', 'es-419', 'fr', 'de', 'pt-BR', 'it', 'ru'] as const;
+type Language = typeof DREAM_LANGUAGES[number];
+
+const ui: Record<Language, Values<typeof uiKeys>> = {
+  zh: [
+    '梦境', '睡眠与梦境', '梦境配置', '梦境环境提示词', '睡眠、素材选择和梦境记录的使用规则。', '梦境素材与档案',
+    '清醒', '睡眠中', '做梦中', '预计唤醒', '指定素材', '添加素材', '填写希望 Coo 关注的话题或公开链接',
+    '删除素材', '指定素材', '最近处理', '尚未处理', '梦境档案', '查询', '查询梦境文字或素材来源',
+    '暂无指定素材', '暂无梦境记录', '素材来源', 'Tavily API Key', '已配置', '未配置', '填写新的 API Key',
+    '保存密钥', '密钥已保存', '进入睡眠', '睡眠时长', '使用配置时长', '提前唤醒', '分钟',
+    '刷新', '操作失败', '正在读取', '创建时间',
+    'ego-browser', '当前采集方式', '暂无可用配置', '网页搜索（免浏览器）', '状态依据已保存的配置，尚未测试连接。',
+    "最近 10 条梦境的 ID、日期和标题（部署时区）。",
+  ],
+  'zh-Hant': [
+    '夢境', '睡眠與夢境', '夢境配置', '夢境環境提示詞', '睡眠、素材選擇和夢境記錄的使用規則。', '夢境素材與檔案',
+    '清醒', '睡眠中', '做夢中', '預計喚醒', '指定素材', '新增素材', '填寫希望 Coo 關注的話題或公開連結',
+    '刪除素材', '指定素材', '最近處理', '尚未處理', '夢境檔案', '查詢', '查詢夢境文字或素材來源',
+    '暫無指定素材', '暫無夢境記錄', '素材來源', 'Tavily API Key', '已配置', '未配置', '填寫新的 API Key',
+    '儲存金鑰', '金鑰已儲存', '進入睡眠', '睡眠時長', '使用配置時長', '提前喚醒', '分鐘',
+    '重新整理', '操作失敗', '正在讀取', '建立時間',
+    'ego-browser', '目前蒐集方式', '暫無可用配置', '網頁搜尋（免瀏覽器）', '狀態依據已儲存的配置，尚未測試連線。',
+    "最近 10 則夢境的 ID、日期和標題（部署時區）。",
+  ],
+  en: [
+    'Dreams', 'Sleep and dreams', 'Dream settings', 'Dream environment prompt', 'Rules for sleep, material selection and dream records.', 'Dream materials and archive',
+    'Awake', 'Sleeping', 'Dreaming', 'Wakes at', 'Designated materials', 'Add material', 'A topic or public link for Coo to explore',
+    'Delete material', 'Designated material', 'Last processed', 'Not processed yet', 'Dream archive', 'Search', 'Search dream text or sources',
+    'No designated materials', 'No dream records', 'Sources', 'Tavily API Key', 'Configured', 'Not configured', 'Enter a new API Key',
+    'Save key', 'Key saved', 'Go to sleep', 'Sleep duration', 'Use configured duration', 'Wake now', 'minutes',
+    'Refresh', 'Operation failed', 'Loading', 'Created',
+    'ego-browser', 'Current collection method', 'No configured method', 'Web search (no browser)', 'Status reflects saved configuration; connection has not been tested.',
+    "IDs, dates and titles of the latest 10 dreams (deployment time zone).",
+  ],
+  ja: [
+    '夢', '睡眠と夢', '夢の設定', '夢の環境プロンプト', '睡眠、素材の選択、夢の記録に関するルール。', '夢の素材と記録',
+    '起きています', '睡眠中', '夢を見ています', '起床予定', '指定素材', '素材を追加', 'Coo に調べてほしい話題や公開リンク',
+    '素材を削除', '指定素材', '最終処理日', '未処理', '夢の記録', '検索', '夢の文章や出典を検索',
+    '指定素材はありません', '夢の記録はありません', '出典', 'Tavily API Key', '設定済み', '未設定', '新しい API Key を入力',
+    'キーを保存', 'キーを保存しました', '眠る', '睡眠時間', '設定の時間を使用', '今すぐ起こす', '分',
+    '更新', '操作に失敗しました', '読み込み中', '作成日時',
+    'ego-browser', '現在の収集方法', '設定済みの方法がありません', 'ウェブ検索（ブラウザー不要）', '保存された設定に基づく状態です。接続は未確認です。',
+    "直近10件の夢の ID、日付、タイトル（デプロイのタイムゾーン）。",
+  ],
+  ko: [
+    '꿈', '수면과 꿈', '꿈 설정', '꿈 환경 프롬프트', '수면, 소재 선택 및 꿈 기록에 관한 규칙입니다.', '꿈 소재 및 기록',
+    '깨어 있음', '수면 중', '꿈꾸는 중', '기상 예정', '지정 소재', '소재 추가', 'Coo가 알아볼 주제 또는 공개 링크',
+    '소재 삭제', '지정 소재', '최근 처리', '아직 처리하지 않음', '꿈 기록', '검색', '꿈 내용 또는 출처 검색',
+    '지정 소재가 없습니다', '꿈 기록이 없습니다', '출처', 'Tavily API Key', '설정됨', '설정되지 않음', '새 API Key 입력',
+    '키 저장', '키를 저장했습니다', '잠들기', '수면 시간', '설정된 시간 사용', '지금 깨우기', '분',
+    '새로고침', '작업 실패', '불러오는 중', '생성 시간',
+    'ego-browser', '현재 수집 방식', '설정된 방식 없음', '웹 검색 (브라우저 불필요)', '저장된 설정을 기준으로 표시합니다. 연결은 테스트하지 않았습니다.',
+    "최근 꿈 10개의 ID, 날짜 및 제목(배포 시간대).",
+  ],
+  'es-419': [
+    'Sueños', 'Sueño y descanso', 'Configuración de sueños', 'Prompt del entorno de sueños', 'Reglas de descanso, selección de materiales y registro de sueños.', 'Materiales y archivo de sueños',
+    'Despierto', 'Durmiendo', 'Soñando', 'Despertar previsto', 'Materiales indicados', 'Agregar material', 'Un tema o enlace público para que Coo lo explore',
+    'Eliminar material', 'Material indicado', 'Último procesamiento', 'Sin procesar', 'Archivo de sueños', 'Buscar', 'Buscar texto del sueño o fuentes',
+    'No hay materiales indicados', 'No hay sueños registrados', 'Fuentes', 'Tavily API Key', 'Configurada', 'Sin configurar', 'Ingresa una nueva API Key',
+    'Guardar clave', 'Clave guardada', 'Dormir', 'Duración del descanso', 'Usar duración configurada', 'Despertar ahora', 'minutos',
+    'Actualizar', 'La operación falló', 'Cargando', 'Creado',
+    'ego-browser', 'Método de recopilación actual', 'Ningún método configurado', 'Búsqueda web (sin navegador)', 'El estado refleja la configuración guardada; no se ha probado la conexión.',
+    "IDs, fechas y títulos de los últimos 10 sueños (zona horaria del despliegue).",
+  ],
+  fr: [
+    'Rêves', 'Sommeil et rêves', 'Réglages des rêves', 'Prompt de l’environnement des rêves', 'Règles de sommeil, de sélection des sujets et d’archivage des rêves.', 'Sujets et archives des rêves',
+    'Éveillé', 'Endormi', 'En train de rêver', 'Réveil prévu', 'Sujets désignés', 'Ajouter un sujet', 'Un sujet ou un lien public à explorer par Coo',
+    'Supprimer le sujet', 'Sujet désigné', 'Dernier traitement', 'Pas encore traité', 'Archives des rêves', 'Rechercher', 'Rechercher dans les rêves ou les sources',
+    'Aucun sujet désigné', 'Aucun rêve enregistré', 'Sources', 'Tavily API Key', 'Configurée', 'Non configurée', 'Saisir une nouvelle API Key',
+    'Enregistrer la clé', 'Clé enregistrée', 'Dormir', 'Durée du sommeil', 'Utiliser la durée configurée', 'Réveiller maintenant', 'minutes',
+    'Actualiser', 'Échec de l’opération', 'Chargement', 'Créé le',
+    'ego-browser', 'Méthode de collecte actuelle', 'Aucune méthode configurée', 'Recherche web (sans navigateur)', 'L’état reflète la configuration enregistrée ; la connexion n’a pas été testée.',
+    "Identifiants, dates et titres des 10 derniers rêves (fuseau du déploiement).",
+  ],
+  de: [
+    'Träume', 'Schlaf und Träume', 'Traumeinstellungen', 'Umgebungs-Prompt für Träume', 'Regeln für Schlaf, Themenauswahl und Traumaufzeichnungen.', 'Traumthemen und Archiv',
+    'Wach', 'Schläft', 'Träumt', 'Aufwachen um', 'Vorgegebene Themen', 'Thema hinzufügen', 'Ein Thema oder öffentlicher Link, den Coo erkunden soll',
+    'Thema löschen', 'Vorgegebenes Thema', 'Zuletzt bearbeitet', 'Noch nicht bearbeitet', 'Traumarchiv', 'Suchen', 'Traumtext oder Quellen durchsuchen',
+    'Keine vorgegebenen Themen', 'Keine Traumaufzeichnungen', 'Quellen', 'Tavily API Key', 'Eingerichtet', 'Nicht eingerichtet', 'Neuen API Key eingeben',
+    'Schlüssel speichern', 'Schlüssel gespeichert', 'Schlafen', 'Schlafdauer', 'Eingestellte Dauer verwenden', 'Jetzt aufwecken', 'Minuten',
+    'Aktualisieren', 'Vorgang fehlgeschlagen', 'Wird geladen', 'Erstellt',
+    'ego-browser', 'Aktuelle Sammelmethode', 'Keine Methode eingerichtet', 'Websuche (ohne Browser)', 'Der Status zeigt die gespeicherte Konfiguration; die Verbindung wurde nicht getestet.',
+    "IDs, Daten und Titel der letzten 10 Träume (Zeitzone der Bereitstellung).",
+  ],
+  'pt-BR': [
+    'Sonhos', 'Sono e sonhos', 'Configurações dos sonhos', 'Prompt do ambiente dos sonhos', 'Regras de sono, seleção de materiais e registro dos sonhos.', 'Materiais e arquivo de sonhos',
+    'Acordado', 'Dormindo', 'Sonhando', 'Despertar previsto', 'Materiais indicados', 'Adicionar material', 'Um tema ou link público para Coo explorar',
+    'Excluir material', 'Material indicado', 'Último processamento', 'Ainda não processado', 'Arquivo de sonhos', 'Buscar', 'Buscar texto do sonho ou fontes',
+    'Nenhum material indicado', 'Nenhum sonho registrado', 'Fontes', 'Tavily API Key', 'Configurada', 'Não configurada', 'Digite uma nova API Key',
+    'Salvar chave', 'Chave salva', 'Dormir', 'Duração do sono', 'Usar duração configurada', 'Acordar agora', 'minutos',
+    'Atualizar', 'Falha na operação', 'Carregando', 'Criado em',
+    'ego-browser', 'Método de coleta atual', 'Nenhum método configurado', 'Pesquisa web (sem navegador)', 'O estado reflete a configuração salva; a conexão não foi testada.',
+    "IDs, datas e títulos dos últimos 10 sonhos (fuso da implantação).",
+  ],
+  it: [
+    'Sogni', 'Sonno e sogni', 'Impostazioni dei sogni', 'Prompt dell’ambiente dei sogni', 'Regole per sonno, scelta dei materiali e registrazione dei sogni.', 'Materiali e archivio dei sogni',
+    'Sveglio', 'Addormentato', 'Sta sognando', 'Risveglio previsto', 'Materiali indicati', 'Aggiungi materiale', 'Un argomento o un link pubblico da far esplorare a Coo',
+    'Elimina materiale', 'Materiale indicato', 'Ultima elaborazione', 'Non ancora elaborato', 'Archivio dei sogni', 'Cerca', 'Cerca nel testo dei sogni o nelle fonti',
+    'Nessun materiale indicato', 'Nessun sogno registrato', 'Fonti', 'Tavily API Key', 'Configurata', 'Non configurata', 'Inserisci una nuova API Key',
+    'Salva chiave', 'Chiave salvata', 'Dormi', 'Durata del sonno', 'Usa la durata configurata', 'Sveglia ora', 'minuti',
+    'Aggiorna', 'Operazione non riuscita', 'Caricamento', 'Creato il',
+    'ego-browser', 'Metodo di raccolta attuale', 'Nessun metodo configurato', 'Ricerca web (senza browser)', 'Lo stato riflette la configurazione salvata; la connessione non è stata verificata.',
+    "ID, date e titoli degli ultimi 10 sogni (fuso orario dell’installazione).",
+  ],
+  ru: [
+    'Сны', 'Сон и сновидения', 'Настройки сновидений', 'Промпт среды сновидений', 'Правила сна, выбора материалов и записи сновидений.', 'Материалы и архив сновидений',
+    'Бодрствует', 'Спит', 'Видит сон', 'Пробуждение в', 'Заданные материалы', 'Добавить материал', 'Тема или общедоступная ссылка для Coo',
+    'Удалить материал', 'Заданный материал', 'Последняя обработка', 'Ещё не обработано', 'Архив сновидений', 'Найти', 'Поиск по тексту снов или источникам',
+    'Нет заданных материалов', 'Нет записанных сновидений', 'Источники', 'Tavily API Key', 'Настроен', 'Не настроен', 'Введите новый API Key',
+    'Сохранить ключ', 'Ключ сохранён', 'Уснуть', 'Длительность сна', 'Использовать заданную длительность', 'Разбудить сейчас', 'минут',
+    'Обновить', 'Не удалось выполнить операцию', 'Загрузка', 'Создано',
+    'ego-browser', 'Текущий способ сбора', 'Нет настроенного способа', 'Веб-поиск (без браузера)', 'Статус основан на сохранённых настройках; подключение не проверялось.',
+    "ID, даты и заголовки последних 10 сновидений (часовой пояс установки).",
+  ],
+};
+
+const setupKeys = ["groupSleepTitle", "groupCollectionTitle", "groupQQTitle", "egoPath", "connectEgo", "egoSpace", "missingConfiguration", "connectionStatus", "collectionStatus", "connectionUnconfigured", "connectionUnchecked", "connectionConnecting", "connectionConnected", "connectionError", "collectionIdle", "collectionCollecting", "collectionOk", "collectionError"] as const;
+
+const setup: Record<Language, Values<typeof setupKeys>> = {
+  "zh": ["睡眠与做梦", "素材采集", "QQ 指令权限", "ego 浏览器路径（.app 或可执行文件）", "连接并检测", "梦境专用 Space", "缺少配置", "连接状态", "采集状态", "未配置", "尚未检测", "正在连接", "已连接", "连接失败", "待采集", "正在采集", "采集成功", "采集失败"],
+  "zh-Hant": ["睡眠與做夢", "素材蒐集", "QQ 指令權限", "ego 瀏覽器路徑（.app 或執行檔）", "連線並檢測", "夢境專用 Space", "缺少配置", "連線狀態", "蒐集狀態", "未配置", "尚未檢測", "正在連線", "已連線", "連線失敗", "待蒐集", "正在蒐集", "蒐集成功", "蒐集失敗"],
+  "en": ["Sleep and dreaming", "Material collection", "QQ command access", "ego browser path (.app or executable)", "Connect and detect", "Dream Space", "Missing configuration", "Connection status", "Collection status", "Not configured", "Not checked", "Connecting", "Connected", "Connection failed", "Idle", "Collecting", "Collection succeeded", "Collection failed"],
+  "ja": ["睡眠と夢", "素材の収集", "QQ コマンドの権限", "ego ブラウザーのパス（.app または実行ファイル）", "接続して検出", "夢専用の Space", "不足している設定", "接続状態", "収集状態", "未設定", "未確認", "接続中", "接続済み", "接続失敗", "待機中", "収集中", "収集成功", "収集失敗"],
+  "ko": ["수면과 꿈", "소재 수집", "QQ 명령 권한", "ego 브라우저 경로(.app 또는 실행 파일)", "연결 및 확인", "꿈 전용 Space", "누락된 설정", "연결 상태", "수집 상태", "설정되지 않음", "확인하지 않음", "연결 중", "연결됨", "연결 실패", "대기 중", "수집 중", "수집 성공", "수집 실패"],
+  "es-419": ["Descanso y sueños", "Recopilación de materiales", "Permisos de comandos QQ", "Ruta del navegador ego (.app o ejecutable)", "Conectar y detectar", "Space de sueños", "Configuración faltante", "Estado de conexión", "Estado de recopilación", "Sin configurar", "Sin comprobar", "Conectando", "Conectado", "Error de conexión", "En espera", "Recopilando", "Recopilación correcta", "Error de recopilación"],
+  "fr": ["Sommeil et rêves", "Collecte de sujets", "Accès aux commandes QQ", "Chemin du navigateur ego (.app ou exécutable)", "Connecter et détecter", "Space des rêves", "Configuration manquante", "État de la connexion", "État de la collecte", "Non configuré", "Non vérifié", "Connexion en cours", "Connecté", "Échec de connexion", "En attente", "Collecte en cours", "Collecte réussie", "Échec de collecte"],
+  "de": ["Schlaf und Träume", "Themensammlung", "QQ-Befehlsrechte", "Pfad zum ego-Browser (.app oder Programmdatei)", "Verbinden und erkennen", "Traum-Space", "Fehlende Einstellungen", "Verbindungsstatus", "Sammelstatus", "Nicht eingerichtet", "Nicht geprüft", "Verbindung wird hergestellt", "Verbunden", "Verbindung fehlgeschlagen", "Bereit", "Wird gesammelt", "Sammlung erfolgreich", "Sammlung fehlgeschlagen"],
+  "pt-BR": ["Sono e sonhos", "Coleta de materiais", "Permissões de comandos QQ", "Caminho do navegador ego (.app ou executável)", "Conectar e detectar", "Space dos sonhos", "Configuração ausente", "Estado da conexão", "Estado da coleta", "Não configurado", "Não verificado", "Conectando", "Conectado", "Falha na conexão", "Aguardando", "Coletando", "Coleta concluída", "Falha na coleta"],
+  "it": ["Sonno e sogni", "Raccolta dei materiali", "Permessi dei comandi QQ", "Percorso del browser ego (.app o eseguibile)", "Connetti e rileva", "Space dei sogni", "Configurazione mancante", "Stato della connessione", "Stato della raccolta", "Non configurato", "Non verificato", "Connessione in corso", "Connesso", "Connessione non riuscita", "In attesa", "Raccolta in corso", "Raccolta riuscita", "Raccolta non riuscita"],
+  "ru": ["Сон и сновидения", "Сбор материалов", "Права на команды QQ", "Путь к браузеру ego (.app или исполняемый файл)", "Подключить и проверить", "Space сновидений", "Недостающие настройки", "Состояние подключения", "Состояние сбора", "Не настроено", "Не проверено", "Подключение", "Подключено", "Ошибка подключения", "Ожидание", "Сбор материалов", "Сбор завершён", "Ошибка сбора"],
+};
+
+const collectionKeys = ["collectionConfigTitle", "phaseWaiting", "phaseCollecting", "phaseGenerating", "phaseGeneratingHint", "lastSuccess", "neverCollected", "testConnection", "testRunning", "testSuccess", "testFailure", "collectionBusy", "collectionNotConfigured", "testCancelled", "collectorStopped", "saveConfig", "configSaved", "configInvalid", "collectionResult", "currentPhase", "testResultCount", "testUsesSavedConfig"] as const;
+
+const collectionUi: Record<Language, Values<typeof collectionKeys>> = {
+  "zh": ["素材采集配置", "等待 Coo 调用", "正在采集", "正在生成梦境", "已取得素材，等待 Coo 编写并保存梦境。", "最近成功时间", "尚无成功采集", "测试采集连接", "正在测试", "采集连接测试成功", "采集连接测试失败", "素材采集正在进行，请稍后重试。", "已勾选的采集方式中没有配置齐全的后端。", "采集连接测试已取消。", "梦境 World 未启用。", "保存配置", "配置已保存", "配置无效，请检查填写内容。", "采集结果", "当前阶段", "返回素材数量", "测试使用已保存的配置，不生成梦境记录。"],
+  "zh-Hant": ["素材蒐集配置", "等待 Coo 呼叫", "正在蒐集", "正在生成夢境", "已取得素材，等待 Coo 編寫並儲存夢境。", "最近成功時間", "尚無成功蒐集", "測試蒐集連線", "正在測試", "蒐集連線測試成功", "蒐集連線測試失敗", "素材蒐集正在進行，請稍後重試。", "已勾選的蒐集方式中沒有配置齊全的後端。", "蒐集連線測試已取消。", "夢境 World 未啟用。", "儲存配置", "配置已儲存", "配置無效，請檢查填寫內容。", "蒐集結果", "目前階段", "返回素材數量", "測試使用已儲存的配置，不生成夢境記錄。"],
+  "en": ["Collection settings", "Waiting for Coo to call", "Collecting", "Generating a dream", "Materials are ready; waiting for Coo to compose and save the dream.", "Last successful collection", "No successful collection yet", "Test collection connection", "Testing", "Collection connection test succeeded", "Collection connection test failed", "Collection is in progress. Try again when it finishes.", "None of the selected collection methods has the required configuration.", "The collection connection test was cancelled.", "The Dream World is not enabled.", "Save settings", "Settings saved", "Invalid configuration. Check the entered values.", "Collection result", "Current phase", "Materials returned", "Tests use saved settings and do not create dream records."],
+  "ja": ["素材収集の設定", "Coo の呼び出し待ち", "収集中", "夢を生成中", "素材を取得しました。Coo による夢の作成と保存を待っています。", "最終収集成功日時", "収集成功の記録はありません", "収集接続をテスト", "テスト中", "収集接続テスト成功", "収集接続テスト失敗", "収集が進行中です。完了後に再試行してください。", "選択した収集方法に必要な設定が揃っていません。", "収集接続テストを取り消しました。", "夢の World が有効になっていません。", "設定を保存", "設定を保存しました", "設定が無効です。入力内容を確認してください。", "収集結果", "現在の段階", "取得した素材数", "保存済みの設定でテストします。夢の記録は作成しません。"],
+  "ko": ["소재 수집 설정", "Coo 호출 대기 중", "수집 중", "꿈 생성 중", "소재를 가져왔습니다. Coo가 꿈을 작성하고 저장하기를 기다립니다.", "최근 수집 성공 시간", "아직 수집 성공 기록 없음", "수집 연결 테스트", "테스트 중", "수집 연결 테스트 성공", "수집 연결 테스트 실패", "소재를 수집 중입니다. 완료 후 다시 시도하세요.", "선택한 수집 방법 중 필요한 설정이 완료된 방법이 없습니다.", "수집 연결 테스트가 취소되었습니다.", "꿈 World가 활성화되지 않았습니다.", "설정 저장", "설정을 저장했습니다", "설정이 잘못되었습니다. 입력 내용을 확인하세요.", "수집 결과", "현재 단계", "반환된 소재 수", "저장된 설정으로 테스트하며 꿈 기록은 생성하지 않습니다."],
+  "es-419": ["Configuración de recopilación", "Esperando que Coo llame", "Recopilando", "Generando un sueño", "Los materiales están listos; esperando que Coo redacte y guarde el sueño.", "Última recopilación exitosa", "Aún no hay recopilaciones exitosas", "Probar conexión de recopilación", "Probando", "La prueba de recopilación fue exitosa", "La prueba de recopilación falló", "La recopilación está en curso. Reintenta al terminar.", "Ningún método de recopilación seleccionado tiene la configuración necesaria.", "Se canceló la prueba de recopilación.", "El World de sueños no está habilitado.", "Guardar configuración", "Configuración guardada", "Configuración inválida. Revisa los valores.", "Resultado de recopilación", "Etapa actual", "Materiales recibidos", "Las pruebas usan la configuración guardada y no crean registros de sueños."],
+  "fr": ["Configuration de la collecte", "En attente de l’appel de Coo", "Collecte en cours", "Création du rêve", "Les sujets sont prêts ; Coo doit encore rédiger et enregistrer le rêve.", "Dernière collecte réussie", "Aucune collecte réussie", "Tester la connexion de collecte", "Test en cours", "Test de collecte réussi", "Échec du test de collecte", "Une collecte est en cours. Réessayez après sa fin.", "Aucune méthode sélectionnée ne dispose de la configuration requise.", "Le test de collecte a été annulé.", "Le World des rêves n’est pas activé.", "Enregistrer les réglages", "Réglages enregistrés", "Configuration incorrecte. Vérifiez les valeurs.", "Résultat de la collecte", "Étape actuelle", "Sujets reçus", "Les tests utilisent les réglages enregistrés et ne créent aucun rêve."],
+  "de": ["Sammeleinstellungen", "Wartet auf Coo-Aufruf", "Sammelt", "Traum wird erstellt", "Material ist verfügbar; Coo muss den Traum noch schreiben und speichern.", "Letzte erfolgreiche Sammlung", "Noch keine erfolgreiche Sammlung", "Sammelverbindung testen", "Test läuft", "Verbindungstest erfolgreich", "Verbindungstest fehlgeschlagen", "Eine Sammlung läuft. Versuchen Sie es danach erneut.", "Keine ausgewählte Sammelmethode verfügt über die erforderliche Konfiguration.", "Der Verbindungstest wurde abgebrochen.", "Die Traum-World ist nicht aktiviert.", "Einstellungen speichern", "Einstellungen gespeichert", "Ungültige Konfiguration. Prüfen Sie die Eingaben.", "Sammelergebnis", "Aktuelle Phase", "Erhaltene Materialien", "Tests verwenden gespeicherte Einstellungen und erstellen keine Traumaufzeichnungen."],
+  "pt-BR": ["Configuração da coleta", "Aguardando chamada do Coo", "Coletando", "Gerando um sonho", "Os materiais estão prontos; aguardando Coo escrever e salvar o sonho.", "Última coleta bem-sucedida", "Nenhuma coleta bem-sucedida", "Testar conexão de coleta", "Testando", "Teste de coleta concluído", "Falha no teste de coleta", "Uma coleta está em andamento. Tente após a conclusão.", "Nenhum método de coleta selecionado tem a configuração necessária.", "O teste de coleta foi cancelado.", "O World dos sonhos não está ativado.", "Salvar configurações", "Configurações salvas", "Configuração inválida. Verifique os valores.", "Resultado da coleta", "Etapa atual", "Materiais recebidos", "Os testes usam as configurações salvas e não criam registros de sonhos."],
+  "it": ["Configurazione della raccolta", "In attesa della chiamata di Coo", "Raccolta in corso", "Generazione del sogno", "I materiali sono pronti; Coo deve ancora scrivere e salvare il sogno.", "Ultima raccolta riuscita", "Nessuna raccolta riuscita", "Verifica connessione di raccolta", "Verifica in corso", "Verifica della raccolta riuscita", "Verifica della raccolta fallita", "La raccolta è in corso. Riprova al termine.", "Nessun metodo di raccolta selezionato ha la configurazione necessaria.", "La verifica della raccolta è stata annullata.", "Il World dei sogni non è abilitato.", "Salva impostazioni", "Impostazioni salvate", "Configurazione non valida. Controlla i valori.", "Risultato della raccolta", "Fase attuale", "Materiali ricevuti", "Le verifiche usano le impostazioni salvate e non creano registrazioni di sogni."],
+  "ru": ["Настройки сбора", "Ожидание вызова Coo", "Сбор материалов", "Создание сновидения", "Материалы получены; ожидается создание и сохранение сновидения Coo.", "Последний успешный сбор", "Успешного сбора пока не было", "Проверить подключение для сбора", "Проверка", "Проверка сбора успешна", "Ошибка проверки сбора", "Сбор уже выполняется. Повторите после завершения.", "Ни один из выбранных способов сбора не имеет необходимой настройки.", "Проверка сбора отменена.", "World сновидений не включён.", "Сохранить настройки", "Настройки сохранены", "Неверная конфигурация. Проверьте значения.", "Результат сбора", "Текущий этап", "Получено материалов", "Проверка использует сохранённые настройки и не создаёт записи сновидений."],
+};
+
+const egoUiKeys = ["egoPathHint", "egoSpaceHint", "egoTransport", "egoModeAuto", "egoModeDirect", "egoModeHelper", "prepareEgoHelper", "stopEgoHelper", "egoHelperStatus", "egoHelperOnline", "egoHelperOffline", "egoHelperLauncher", "egoHelperInstructions", "egoHelperNotPrepared", "egoRestoreHint", "egoControlHalted", "egoUncertain", "egoWorldDisabled", "egoNotConnected", "egoAgentReady", "egoUserControl", "egoUnknownError"] as const;
+const egoUi: Record<Language, Values<typeof egoUiKeys>> = {
+  "zh": ["留空或填写 ego-browser 时通过 PATH 查找；也接受完整路径和 macOS .app。", "留空生成本部署的专属名称，请勿与其他 bot 共用。", "实际连接通道", "自动选择", "直接连接", "普通权限助手", "生成助手启动脚本", "停止助手", "助手状态", "在线", "离线", "助手启动脚本", "脚本生成后，请以普通用户权限自行启动；扩展不会自动启动助手。", "尚未生成启动脚本", "截图需要时恢复最小化窗口，并选择目标页面。", "操作已暂停", "上次浏览器操作的结果仍未知；不会自动重放该操作。", "World 已停用", "尚未连接", "Agent 可用", "用户控制或浏览器提示暂停", "错误码未提供，具体原因未确认。"],
+  "zh-Hant": ["留空或填寫 ego-browser 時透過 PATH 尋找；也接受完整路徑和 macOS .app。", "留空產生本部署的專屬名稱，請勿與其他 bot 共用。", "實際連線通道", "自動選擇", "直接連線", "一般權限助手", "產生助手啟動腳本", "停止助手", "助手狀態", "在線", "離線", "助手啟動腳本", "腳本產生後，請以一般使用者權限自行啟動；擴展不會自動啟動助手。", "尚未產生啟動腳本", "截圖需要時還原最小化視窗，並選擇目標頁面。", "操作已暫停", "上次瀏覽器操作的結果仍未知；不會自動重放該操作。", "World 已停用", "尚未連線", "Agent 可用", "使用者控制或瀏覽器提示暫停", "未提供錯誤碼，具體原因尚未確認。"],
+  "en": ["Empty or ego-browser searches PATH; an absolute path or macOS .app is also accepted.", "Empty generates a name dedicated to this deployment. Do not share it with other bots.", "Active connection transport", "Automatic", "Direct", "Standard-user helper", "Prepare helper launcher", "Stop helper", "Helper status", "Online", "Offline", "Helper launcher", "After preparing the script, launch it yourself as a standard user. The extension does not start the helper automatically.", "No launcher prepared", "Restore a minimized window when needed for a screenshot and select the target page.", "Operations paused", "The previous browser operation’s outcome remains unknown. It will not be replayed automatically.", "World disabled", "Not connected", "Agent ready", "Paused for user control or a browser prompt", "No error code was provided; the specific cause is unconfirmed."],
+  "ja": ["空欄または ego-browser なら PATH から検索します。絶対パスや macOS .app も使えます。", "空欄ならこのデプロイ専用の名前を生成します。他の bot と共有しないでください。", "使用中の接続経路", "自動", "直接接続", "通常権限ヘルパー", "ヘルパー起動スクリプトを生成", "ヘルパーを停止", "ヘルパー状態", "オンライン", "オフライン", "ヘルパー起動スクリプト", "生成したスクリプトを通常ユーザーとして起動してください。拡張機能は自動起動しません。", "起動スクリプト未生成", "撮影に必要なら最小化ウィンドウを復元し、対象ページを選択します。", "操作を一時停止中", "前回のブラウザー操作の結果は不明です。その操作を自動で再実行することはありません。", "World は無効", "未接続", "Agent 利用可能", "ユーザー操作またはブラウザーの確認により一時停止", "エラーコードがなく、具体的な原因は未確認です。"],
+  "ko": ["비워 두거나 ego-browser를 입력하면 PATH에서 찾습니다. 절대 경로나 macOS .app도 사용할 수 있습니다.", "비우면 이 배포 전용 이름을 생성합니다. 다른 bot과 공유하지 마세요.", "실제 연결 경로", "자동", "직접 연결", "일반 권한 도우미", "도우미 시작 스크립트 생성", "도우미 중지", "도우미 상태", "온라인", "오프라인", "도우미 시작 스크립트", "생성한 스크립트를 일반 사용자 권한으로 직접 시작하세요. 확장은 도우미를 자동 시작하지 않습니다.", "시작 스크립트 없음", "스크린샷에 필요하면 최소화된 창을 복원하고 대상 페이지를 선택합니다.", "작업 일시 중지", "이전 브라우저 작업의 결과는 아직 알 수 없습니다. 해당 작업을 자동으로 다시 실행하지 않습니다.", "World 비활성화됨", "연결되지 않음", "Agent 사용 가능", "사용자 제어 또는 브라우저 알림으로 일시 중지", "오류 코드가 제공되지 않아 구체적인 원인을 확인하지 못했습니다."],
+  "es-419": ["Vacío o ego-browser busca en PATH; también admite una ruta absoluta o .app de macOS.", "Vacío genera un nombre exclusivo de esta instalación. No lo compartas con otros bots.", "Transporte de conexión activo", "Automático", "Directo", "Asistente sin privilegios", "Preparar script del asistente", "Detener asistente", "Estado del asistente", "En línea", "Sin conexión", "Script del asistente", "Ejecuta el script preparado como usuario estándar. La extensión no inicia el asistente automáticamente.", "Sin script preparado", "Restaura una ventana minimizada cuando una captura lo requiera y selecciona la página.", "Operaciones en pausa", "El resultado de la operación anterior del navegador sigue siendo desconocido. No se repetirá automáticamente.", "World deshabilitado", "Sin conexión", "Agent disponible", "En pausa por control del usuario o aviso del navegador", "No se proporcionó un código de error; la causa específica no está confirmada."],
+  "fr": ["Vide ou ego-browser recherche dans PATH ; un chemin absolu ou .app macOS convient aussi.", "Vide génère un nom réservé à ce déploiement. Ne le partagez pas avec d’autres bots.", "Transport de connexion actif", "Automatique", "Direct", "Assistant sans privilèges", "Préparer le script de l’assistant", "Arrêter l’assistant", "État de l’assistant", "En ligne", "Hors ligne", "Script de l’assistant", "Lancez vous-même le script préparé comme utilisateur standard. L’extension ne démarre pas l’assistant automatiquement.", "Aucun script préparé", "Restaure la fenêtre minimisée si nécessaire pour une capture et sélectionne la page cible.", "Opérations en pause", "Le résultat de l’opération précédente du navigateur reste inconnu. Elle ne sera pas rejouée automatiquement.", "World désactivé", "Non connecté", "Agent disponible", "En pause pour contrôle utilisateur ou invite du navigateur", "Aucun code d’erreur n’a été fourni ; la cause précise n’est pas confirmée."],
+  "de": ["Leer oder ego-browser sucht in PATH; absolute Pfade und macOS .app werden ebenfalls unterstützt.", "Leer erzeugt einen Namen für diese Bereitstellung. Nicht mit anderen Bots teilen.", "Aktiver Verbindungsweg", "Automatisch", "Direkt", "Helfer ohne Administratorrechte", "Startskript für Helfer erzeugen", "Helfer stoppen", "Helferstatus", "Online", "Offline", "Startskript für Helfer", "Starten Sie das erzeugte Skript als normaler Nutzer. Die Erweiterung startet den Helfer nicht automatisch.", "Kein Startskript erzeugt", "Stellt bei Bedarf für Aufnahmen das minimierte Fenster wieder her und wählt die Zielseite.", "Vorgänge pausiert", "Das Ergebnis des letzten Browservorgangs bleibt unbekannt. Der Vorgang wird nicht automatisch wiederholt.", "World deaktiviert", "Nicht verbunden", "Agent verfügbar", "Durch Nutzerkontrolle oder Browserabfrage pausiert", "Es wurde kein Fehlercode angegeben; die genaue Ursache ist ungeklärt."],
+  "pt-BR": ["Vazio ou ego-browser pesquisa no PATH; também aceita caminho absoluto ou .app do macOS.", "Vazio gera um nome exclusivo desta instalação. Não compartilhe com outros bots.", "Transporte de conexão ativo", "Automático", "Direto", "Assistente sem privilégios", "Preparar script do assistente", "Parar assistente", "Estado do assistente", "Online", "Offline", "Script do assistente", "Execute o script preparado como usuário comum. A extensão não inicia o assistente automaticamente.", "Nenhum script preparado", "Restaura a janela minimizada quando necessário para uma captura e seleciona a página.", "Operações pausadas", "O resultado da operação anterior do navegador permanece desconhecido. Ela não será repetida automaticamente.", "World desativado", "Não conectado", "Agent disponível", "Pausado por controle do usuário ou aviso do navegador", "Nenhum código de erro foi fornecido; a causa específica não foi confirmada."],
+  "it": ["Vuoto o ego-browser cerca nel PATH; sono accettati anche percorsi assoluti e .app macOS.", "Vuoto genera un nome dedicato a questa installazione. Non condividerlo con altri bot.", "Trasporto di connessione attivo", "Automatico", "Diretto", "Assistente senza privilegi", "Prepara lo script dell’assistente", "Arresta assistente", "Stato dell’assistente", "Online", "Offline", "Script dell’assistente", "Avvia lo script preparato come utente standard. L’estensione non avvia automaticamente l’assistente.", "Nessuno script preparato", "Ripristina la finestra ridotta se necessario per una cattura e seleziona la pagina.", "Operazioni in pausa", "L’esito dell’operazione precedente del browser resta sconosciuto. L’operazione non sarà ripetuta automaticamente.", "World disabilitato", "Non connesso", "Agent disponibile", "In pausa per controllo utente o richiesta del browser", "Non è stato fornito un codice di errore; la causa specifica non è confermata."],
+  "ru": ["Пустое значение или ego-browser ищет в PATH; также допустим абсолютный путь или .app macOS.", "Пустое значение создаёт имя для этой установки. Не используйте его для других ботов.", "Активный транспорт подключения", "Автоматически", "Напрямую", "Помощник с обычными правами", "Подготовить скрипт помощника", "Остановить помощника", "Состояние помощника", "В сети", "Не в сети", "Скрипт помощника", "Запустите подготовленный скрипт с обычными правами пользователя. Расширение не запускает помощника автоматически.", "Скрипт не подготовлен", "При необходимости снимка восстанавливает свёрнутое окно и выбирает нужную страницу.", "Операции приостановлены", "Результат предыдущей операции браузера остаётся неизвестным. Операция не будет повторена автоматически.", "World отключён", "Не подключено", "Agent доступен", "Пауза из-за управления пользователем или запроса браузера", "Код ошибки не предоставлен; точная причина не подтверждена."],
+};
+
+const configs: Record<Language, Values<typeof configKeys>> = {
+  "zh": ["启用", "无互动后睡眠", "无互动时长（分钟）", "默认睡眠时长（分钟）", "睡眠做梦模式", "做梦概率（0–1）", "定时白日梦", "白日梦时间（HH:mm，逗号分隔）", "定时睡眠", "睡眠时间（HH:mm，逗号分隔）", "主人 QQ 号（梦境控制权限）", "素材采集模式", "ego 程序路径或命令（可留空）", "Chromium 浏览器可执行文件", "公开搜索网址模板（含 {query}）", "允许访问的域名（逗号分隔）", "请求超时（毫秒）", "最多搜索结果", "做梦最长时长（分钟）", "启用梦话分享", "梦话分享群白名单", "私聊 QQ 号白名单"],
+  "zh-Hant": ["啟用", "無互動後睡眠", "無互動時長（分鐘）", "預設睡眠時長（分鐘）", "睡眠做夢模式", "做夢機率（0–1）", "定時白日夢", "白日夢時間（HH:mm，以逗號分隔）", "定時睡眠", "睡眠時間（HH:mm，以逗號分隔）", "主人 QQ 號（夢境控制權限）", "素材蒐集模式", "ego 程式路徑或命令（可留空）", "Chromium 瀏覽器執行檔", "公開搜尋網址範本（含 {query}）", "允許存取的網域（以逗號分隔）", "請求逾時（毫秒）", "搜尋結果上限", "做夢最長時間（分鐘）", "啟用夢話分享", "夢話分享群組白名單", "私聊 QQ 號白名單"],
+  "en": ["Enabled", "Sleep after inactivity", "Inactivity duration (minutes)", "Default sleep duration (minutes)", "Sleep dream mode", "Dream probability (0–1)", "Scheduled daydreams", "Daydream times (HH:mm, comma-separated)", "Scheduled sleep", "Sleep times (HH:mm, comma-separated)", "Owner QQ IDs (dream controls)", "Collection mode", "ego executable path or command (optional)", "Chromium browser executable", "Public search URL template (with {query})", "Allowed domains (comma-separated)", "Request timeout (milliseconds)", "Maximum search results", "Maximum dream duration (minutes)", "Enable dream sharing", "Dream-sharing group allowlist", "Private QQ dream recipients"],
+  "ja": ["有効", "無操作後に眠る", "無操作時間（分）", "標準睡眠時間（分）", "睡眠時の夢モード", "夢を見る確率（0–1）", "定時の白昼夢", "白昼夢の時刻（HH:mm、カンマ区切り）", "定時の睡眠", "睡眠の時刻（HH:mm、カンマ区切り）", "主人の QQ ID（夢の操作権限）", "収集モード", "ego のパスまたはコマンド（任意）", "Chromium ブラウザー実行ファイル", "公開検索 URL テンプレート（{query} を含む）", "許可ドメイン（カンマ区切り）", "リクエストのタイムアウト（ミリ秒）", "検索結果の上限", "夢の最長時間（分）", "寝言の共有を有効にする", "寝言を共有するグループの許可リスト", "夢を共有する個人の QQ 番号"],
+  "ko": ["활성화", "상호작용이 없으면 수면", "상호작용 대기 시간(분)", "기본 수면 시간(분)", "수면 중 꿈 모드", "꿈 확률(0–1)", "예약된 백일몽", "백일몽 시각(HH:mm, 쉼표 구분)", "예약된 수면", "수면 시각(HH:mm, 쉼표 구분)", "주인 QQ ID(꿈 제어 권한)", "수집 모드", "ego 실행 경로 또는 명령(선택)", "Chromium 브라우저 실행 파일", "공개 검색 URL 템플릿({query} 포함)", "허용 도메인(쉼표 구분)", "요청 제한 시간(밀리초)", "최대 검색 결과 수", "최대 꿈 시간(분)", "잠꼬대 공유 활성화", "잠꼬대 공유 그룹 허용 목록", "꿈을 공유할 개인 QQ 번호"],
+  "es-419": ["Habilitado", "Dormir tras inactividad", "Tiempo sin interacción (minutos)", "Duración predeterminada del descanso (minutos)", "Modo de sueños al dormir", "Probabilidad de soñar (0–1)", "Ensueños programados", "Horarios de ensueño (HH:mm, separados por comas)", "Descanso programado", "Horarios de descanso (HH:mm, separados por comas)", "IDs QQ del dueño (control de sueños)", "Modo de recopilación", "Ruta o comando de ego (opcional)", "Ejecutable del navegador Chromium", "Plantilla de URL de búsqueda pública (con {query})", "Dominios permitidos (separados por comas)", "Tiempo límite de solicitud (milisegundos)", "Máximo de resultados", "Duración máxima del sueño (minutos)", "Habilitar relatos de sueños", "Grupos permitidos para relatos de sueños", "Destinatarios privados QQ"],
+  "fr": ["Activé", "Dormir après inactivité", "Durée sans interaction (minutes)", "Durée de sommeil par défaut (minutes)", "Mode de rêve pendant le sommeil", "Probabilité de rêver (0–1)", "Rêveries programmées", "Heures des rêveries (HH:mm, séparées par des virgules)", "Sommeil programmé", "Heures de sommeil (HH:mm, séparées par des virgules)", "Identifiants QQ du propriétaire (contrôle des rêves)", "Mode de collecte", "Chemin ou commande ego (facultatif)", "Exécutable du navigateur Chromium", "Modèle d’URL de recherche publique (avec {query})", "Domaines autorisés (séparés par des virgules)", "Délai de requête (millisecondes)", "Nombre maximal de résultats", "Durée maximale d’un rêve (minutes)", "Activer le partage de rêves", "Groupes autorisés pour le partage de rêves", "Destinataires privés QQ"],
+  "de": ["Aktiviert", "Nach Inaktivität schlafen", "Zeit ohne Interaktion (Minuten)", "Standard-Schlafdauer (Minuten)", "Traummodus beim Schlafen", "Traumwahrscheinlichkeit (0–1)", "Geplante Tagträume", "Tagtraumzeiten (HH:mm, durch Kommas getrennt)", "Geplanter Schlaf", "Schlafzeiten (HH:mm, durch Kommas getrennt)", "QQ-IDs des Besitzers (Traumsteuerung)", "Sammelmodus", "ego-Pfad oder Befehl (optional)", "Chromium-Browser-Programmdatei", "Öffentliche Such-URL-Vorlage (mit {query})", "Erlaubte Domains (durch Kommas getrennt)", "Anfrage-Zeitlimit (Millisekunden)", "Maximale Suchergebnisse", "Maximale Traumdauer (Minuten)", "Traumgeschichten teilen", "Erlaubte Gruppen für Traumgeschichten", "Private QQ-Empfänger"],
+  "pt-BR": ["Ativado", "Dormir após inatividade", "Tempo sem interação (minutos)", "Duração padrão do sono (minutos)", "Modo de sonho durante o sono", "Probabilidade de sonhar (0–1)", "Devaneios agendados", "Horários de devaneio (HH:mm, separados por vírgulas)", "Sono agendado", "Horários de sono (HH:mm, separados por vírgulas)", "IDs QQ do dono (controle dos sonhos)", "Modo de coleta", "Caminho ou comando do ego (opcional)", "Executável do navegador Chromium", "Modelo de URL de busca pública (com {query})", "Domínios permitidos (separados por vírgulas)", "Tempo limite de solicitação (milissegundos)", "Máximo de resultados", "Duração máxima de um sonho (minutos)", "Ativar compartilhamento de sonhos", "Grupos permitidos para compartilhar sonhos", "Destinatários privados QQ"],
+  "it": ["Abilitato", "Dormi dopo inattività", "Tempo senza interazione (minuti)", "Durata predefinita del sonno (minuti)", "Modalità dei sogni durante il sonno", "Probabilità di sognare (0–1)", "Sogni a occhi aperti programmati", "Orari dei sogni a occhi aperti (HH:mm, separati da virgole)", "Sonno programmato", "Orari del sonno (HH:mm, separati da virgole)", "ID QQ del proprietario (controllo dei sogni)", "Modalità di raccolta", "Percorso o comando ego (facoltativo)", "Eseguibile del browser Chromium", "Modello URL di ricerca pubblica (con {query})", "Domini consentiti (separati da virgole)", "Timeout della richiesta (millisecondi)", "Numero massimo di risultati", "Durata massima di un sogno (minuti)", "Abilita condivisione dei sogni", "Gruppi autorizzati alla condivisione dei sogni", "Destinatari privati QQ"],
+  "ru": ["Включено", "Сон после бездействия", "Время без взаимодействия (минуты)", "Длительность сна по умолчанию (минуты)", "Режим сновидений во сне", "Вероятность сновидения (0–1)", "Дневные сны по расписанию", "Время дневных снов (HH:mm, через запятую)", "Сон по расписанию", "Время сна (HH:mm, через запятую)", "QQ ID хозяина (управление сновидениями)", "Режим сбора", "Путь или команда ego (необязательно)", "Исполняемый файл браузера Chromium", "Шаблон URL общедоступного поиска (с {query})", "Разрешённые домены (через запятую)", "Тайм-аут запроса (миллисекунды)", "Максимум результатов поиска", "Максимальная длительность сновидения (минуты)", "Включить рассказы о снах", "Разрешённые группы для рассказов о снах", "Личные получатели QQ"],
+};
+
+const events: Record<Language, Values<typeof eventKeys>> = {
+  "zh": ["进入睡眠。", "睡眠结束。", "请求采集素材并记录梦境。", "梦境已记录。", "做梦任务已取消。", "做梦任务失败。", "梦话分享建议。", "睡眠中的 QQ 提及。"],
+  "zh-Hant": ["進入睡眠。", "睡眠結束。", "請求蒐集素材並記錄夢境。", "夢境已記錄。", "做夢任務已取消。", "做夢任務失敗。", "夢話分享建議。", "睡眠中的 QQ 提及。"],
+  "en": ["Sleep started.", "Sleep ended.", "Material collection and a dream record were requested.", "The dream was recorded.", "The dream task was cancelled.", "The dream task failed.", "Dream sharing suggested.", "QQ mention received during sleep."],
+  "ja": ["睡眠を開始しました。", "睡眠が終了しました。", "素材の収集と夢の記録を要求しました。", "夢を記録しました。", "夢のタスクを取り消しました。", "夢のタスクに失敗しました。", "寝言の共有が提案されました。", "睡眠中に QQ のメンションを受信しました。"],
+  "ko": ["수면을 시작했습니다.", "수면을 종료했습니다.", "소재 수집과 꿈 기록을 요청했습니다.", "꿈을 기록했습니다.", "꿈 작업을 취소했습니다.", "꿈 작업에 실패했습니다.", "잠꼬대 공유를 제안했습니다.", "수면 중 QQ 멘션을 받았습니다."],
+  "es-419": ["Comenzó el descanso.", "Terminó el descanso.", "Se solicitó recopilar materiales y registrar un sueño.", "El sueño se registró.", "Se canceló la tarea del sueño.", "La tarea del sueño falló.", "Se sugirió compartir un sueño.", "Se recibió una mención de QQ durante el sueño."],
+  "fr": ["Le sommeil a commencé.", "Le sommeil est terminé.", "La collecte de sujets et l’enregistrement d’un rêve ont été demandés.", "Le rêve a été enregistré.", "La tâche de rêve a été annulée.", "La tâche de rêve a échoué.", "Un partage de rêve est suggéré.", "Une mention QQ a été reçue pendant le sommeil."],
+  "de": ["Der Schlaf hat begonnen.", "Der Schlaf ist beendet.", "Themensammlung und Traumaufzeichnung wurden angefordert.", "Der Traum wurde aufgezeichnet.", "Die Traumaufgabe wurde abgebrochen.", "Die Traumaufgabe ist fehlgeschlagen.", "Das Teilen einer Traumgeschichte wurde vorgeschlagen.", "Während des Schlafs ist eine QQ-Erwähnung eingegangen."],
+  "pt-BR": ["O sono começou.", "O sono terminou.", "Foi solicitada a coleta de materiais e o registro de um sonho.", "O sonho foi registrado.", "A tarefa do sonho foi cancelada.", "A tarefa do sonho falhou.", "Foi sugerido compartilhar um sonho.", "Uma menção QQ foi recebida durante o sono."],
+  "it": ["Il sonno è iniziato.", "Il sonno è terminato.", "Sono state richieste la raccolta dei materiali e la registrazione di un sogno.", "Il sogno è stato registrato.", "L’attività del sogno è stata annullata.", "L’attività del sogno non è riuscita.", "È stata proposta la condivisione di un sogno.", "È arrivata una menzione QQ durante il sonno."],
+  "ru": ["Сон начался.", "Сон завершён.", "Запрошены сбор материалов и запись сновидения.", "Сновидение записано.", "Задача сновидения отменена.", "Задача сновидения завершилась ошибкой.", "Предложено рассказать о сне.", "Во время сна получено упоминание в QQ."],
+};
+
+const egoErrorKeys = [
+  'missingPath', 'invalidPath', 'notExecutable', 'unsupportedBrowser', 'startFailed', 'timeout',
+  'cancelled', 'disconnected', 'userControl', 'nameInUse',
+  'invalidResponse', 'responseTooLarge', 'commandFailed',
+] as const;
+
+const egoErrors: Record<Language, Values<typeof egoErrorKeys>> = {
+  "zh": ["请填写 ego 浏览器路径。", "路径必须是本机的绝对路径。", "该路径不存在或无法执行。", "该浏览器不支持所需的 ego 接口，请更新 ego-browser。", "无法启动 ego 浏览器，请检查路径和执行权限。", "连接超时，请确认浏览器可正常运行后重试。", "连接操作已取消。", "浏览器连接已断开，请重新连接。", "ego 由用户或浏览器提示暂停。在 ego 中主动交回控制后会自动检测；本轮继续尝试后续采集方式。", "梦境 Space 名称已被占用。", "未能读取 ego 的连接结果，请重新连接；如仍失败，请报告给梦境扩展作者。", "浏览器返回的数据超过大小限制。", "浏览器操作失败，请重新连接后重试。"],
+  "zh-Hant": ["請填寫 ego 瀏覽器路徑。", "路徑必須是本機的絕對路徑。", "該路徑不存在或無法執行。", "此瀏覽器不支援所需的 ego 介面，請更新 ego-browser。", "無法啟動 ego 瀏覽器，請檢查路徑與執行權限。", "連線逾時，請確認瀏覽器可正常執行後重試。", "連線操作已取消。", "瀏覽器連線已中斷，請重新連線。", "ego 因使用者控制或瀏覽器提示暫停。在 ego 中主動交回控制後會自動偵測；本輪繼續嘗試後續蒐集方式。", "夢境 Space 名稱已被占用。", "未能讀取 ego 的連線結果，請重新連線；若仍失敗，請回報給夢境擴展作者。", "瀏覽器回傳的資料超過大小限制。", "瀏覽器操作失敗，請重新連線後重試。"],
+  "en": ["Enter the ego browser path.", "Use an absolute path on this computer.", "The path does not exist or cannot be executed.", "This browser does not support the required ego interface. Update ego-browser.", "Could not start ego. Check its path and execution permissions.", "Connection timed out. Check that the browser runs, then retry.", "The connection operation was cancelled.", "The browser disconnected. Connect again.", "ego is paused for user control or a browser prompt. Returning control in ego is detected automatically; this dream proceeds through the remaining collection methods.", "The Dream Space name is already in use.", "Could not read the ego connection result. Reconnect; if it fails again, report it to the Dream extension author.", "The browser response exceeded the size limit.", "The browser operation failed. Connect again and retry."],
+  "ja": ["ego ブラウザーのパスを入力してください。", "このコンピューター上の絶対パスを使用してください。", "パスが存在しないか実行できません。", "必要な ego インターフェースに非対応です。ego-browser を更新してください。", "ego を起動できません。パスと実行権限を確認してください。", "接続がタイムアウトしました。ブラウザーの動作を確認して再試行してください。", "接続を取り消しました。", "ブラウザーとの接続が切れました。再接続してください。", "ユーザー操作またはブラウザーの確認により ego は一時停止中です。ego で制御を返すと自動検出されます。今回の夢は残りの収集方法を試します。", "夢の Space 名は既に使われています。", "ego の接続結果を読み取れませんでした。再接続しても失敗する場合は、夢の拡張機能の作者に報告してください。", "ブラウザーの応答がサイズ制限を超えました。", "ブラウザー操作に失敗しました。再接続して再試行してください。"],
+  "ko": ["ego 브라우저 경로를 입력하세요.", "이 컴퓨터의 절대 경로를 사용하세요.", "경로가 없거나 실행할 수 없습니다.", "필요한 ego 인터페이스를 지원하지 않습니다. ego-browser를 업데이트하세요.", "ego를 시작할 수 없습니다. 경로와 실행 권한을 확인하세요.", "연결 시간이 초과되었습니다. 브라우저 작동을 확인한 뒤 다시 시도하세요.", "연결 작업이 취소되었습니다.", "브라우저 연결이 끊겼습니다. 다시 연결하세요.", "사용자 제어 또는 브라우저 알림으로 ego가 일시 중지되었습니다. ego에서 제어권을 돌려주면 자동 감지합니다. 이번 꿈은 나머지 수집 방법을 시도합니다.", "꿈 Space 이름이 이미 사용 중입니다.", "ego 연결 결과를 읽지 못했습니다. 다시 연결해도 실패하면 꿈 확장 작성자에게 알려주세요.", "브라우저 응답이 크기 제한을 초과했습니다.", "브라우저 작업에 실패했습니다. 다시 연결한 뒤 시도하세요."],
+  "es-419": ["Ingresa la ruta del navegador ego.", "Usa una ruta absoluta de esta computadora.", "La ruta no existe o no se puede ejecutar.", "El navegador no admite la interfaz ego requerida. Actualiza ego-browser.", "No se pudo iniciar ego. Revisa la ruta y los permisos de ejecución.", "La conexión agotó el tiempo. Comprueba que el navegador funcione y reintenta.", "Se canceló la conexión.", "El navegador se desconectó. Vuelve a conectarlo.", "ego está en pausa por control del usuario o un aviso del navegador. La devolución del control en ego se detecta automáticamente; este sueño continúa con los métodos de recopilación restantes.", "El nombre del Space de sueños ya está en uso.", "No se pudo leer el resultado de conexión de ego. Vuelve a conectar; si falla otra vez, avisa al autor de la extensión de sueños.", "La respuesta del navegador superó el límite de tamaño.", "La operación del navegador falló. Vuelve a conectar y reintenta."],
+  "fr": ["Saisissez le chemin du navigateur ego.", "Utilisez un chemin absolu sur cet ordinateur.", "Le chemin n’existe pas ou ne peut pas être exécuté.", "Ce navigateur ne prend pas en charge l’interface ego requise. Mettez ego-browser à jour.", "Impossible de démarrer ego. Vérifiez le chemin et les droits d’exécution.", "Délai de connexion dépassé. Vérifiez le fonctionnement du navigateur puis réessayez.", "La connexion a été annulée.", "Le navigateur s’est déconnecté. Reconnectez-le.", "ego est en pause pour contrôle utilisateur ou invite du navigateur. Le retour du contrôle dans ego est détecté automatiquement ; ce rêve essaie les méthodes de collecte restantes.", "Le nom du Space des rêves est déjà utilisé.", "Impossible de lire le résultat de connexion à ego. Reconnectez-vous ; si l’échec persiste, signalez-le à l’auteur de l’extension des rêves.", "La réponse du navigateur dépasse la taille autorisée.", "L’opération du navigateur a échoué. Reconnectez-vous puis réessayez."],
+  "de": ["Geben Sie den Pfad zum ego-Browser ein.", "Verwenden Sie einen absoluten Pfad auf diesem Computer.", "Der Pfad existiert nicht oder ist nicht ausführbar.", "Der Browser unterstützt die benötigte ego-Schnittstelle nicht. Aktualisieren Sie ego-browser.", "ego konnte nicht gestartet werden. Prüfen Sie Pfad und Ausführungsrechte.", "Zeitüberschreitung. Prüfen Sie den Browser und versuchen Sie es erneut.", "Die Verbindung wurde abgebrochen.", "Die Browser-Verbindung wurde getrennt. Verbinden Sie sich erneut.", "ego ist durch Nutzerkontrolle oder eine Browserabfrage pausiert. Die Rückgabe der Kontrolle in ego wird automatisch erkannt; dieser Traum versucht die übrigen Sammelmethoden.", "Der Name des Traum-Space wird bereits verwendet.", "Das ego-Verbindungsergebnis konnte nicht gelesen werden. Verbinden Sie sich erneut; melden Sie weitere Fehler dem Autor der Traum-Erweiterung.", "Die Browser-Antwort überschreitet die Größenbegrenzung.", "Die Browser-Aktion ist fehlgeschlagen. Verbinden Sie sich erneut und versuchen Sie es noch einmal."],
+  "pt-BR": ["Informe o caminho do navegador ego.", "Use um caminho absoluto neste computador.", "O caminho não existe ou não pode ser executado.", "O navegador não oferece a interface ego necessária. Atualize o ego-browser.", "Não foi possível iniciar o ego. Verifique o caminho e as permissões de execução.", "A conexão excedeu o tempo limite. Verifique o navegador e tente novamente.", "A conexão foi cancelada.", "O navegador desconectou. Conecte novamente.", "ego está pausado por controle do usuário ou aviso do navegador. A devolução do controle no ego é detectada automaticamente; este sonho tenta os métodos de coleta restantes.", "O nome do Space dos sonhos já está em uso.", "Não foi possível ler o resultado da conexão com ego. Reconecte; se falhar novamente, avise o autor da extensão dos sonhos.", "A resposta do navegador excedeu o limite de tamanho.", "A operação do navegador falhou. Conecte novamente e tente outra vez."],
+  "it": ["Inserisci il percorso del browser ego.", "Usa un percorso assoluto su questo computer.", "Il percorso non esiste o non è eseguibile.", "Il browser non supporta l’interfaccia ego richiesta. Aggiorna ego-browser.", "Impossibile avviare ego. Controlla il percorso e i permessi di esecuzione.", "Connessione scaduta. Verifica che il browser funzioni e riprova.", "La connessione è stata annullata.", "Il browser si è disconnesso. Connettiti di nuovo.", "ego è in pausa per controllo utente o richiesta del browser. La restituzione del controllo in ego viene rilevata automaticamente; questo sogno prova i metodi di raccolta rimanenti.", "Il nome dello Space dei sogni è già in uso.", "Impossibile leggere il risultato della connessione a ego. Riconnettiti; se il problema persiste, segnalalo all’autore dell’estensione dei sogni.", "La risposta del browser supera il limite di dimensione.", "L’operazione del browser non è riuscita. Connettiti di nuovo e riprova."],
+  "ru": ["Введите путь к браузеру ego.", "Укажите абсолютный путь на этом компьютере.", "Путь не существует или файл нельзя выполнить.", "Браузер не поддерживает нужный интерфейс ego. Обновите ego-browser.", "Не удалось запустить ego. Проверьте путь и права на выполнение.", "Время подключения истекло. Проверьте работу браузера и повторите попытку.", "Подключение отменено.", "Браузер отключился. Подключитесь снова.", "ego приостановлен из-за управления пользователем или запроса браузера. Возврат управления в ego определяется автоматически; это сновидение пробует оставшиеся способы сбора.", "Имя Space сновидений уже занято.", "Не удалось прочитать результат подключения к ego. Подключитесь снова; при повторной ошибке сообщите автору расширения сновидений.", "Ответ браузера превысил ограничение размера.", "Операция браузера не удалась. Подключитесь снова и повторите попытку."],
+};
+
+export function egoErrorText(code: string, language?: string): string {
+  const index = egoErrorKeys.indexOf(code as typeof egoErrorKeys[number]);
+  return index < 0 ? strings(language).connectionError : egoErrors[languageOf(language)][index]!;
+}
+
+const egoBrowserErrorKeys = ['helperUnavailable', 'helperRequired', 'helperVersion', 'helperMismatch', 'browserUnavailable', 'timeout', 'invalidReceipt', 'spaceMissing', 'spaceUnavailable', 'helperUnsupported'] as const;
+const egoBrowserErrors: Record<Language, Values<typeof egoBrowserErrorKeys>> = {
+  "zh": ["普通权限辅助进程未运行，请手动启动生成的启动文件后重新连接。", "ego 拒绝高权限客户端，请启动普通权限辅助进程后重新连接。", "请重新生成启动文件，并重启辅助进程后连接。", "此辅助进程属于另一个 Space，请使用本部署专用目录。", "ego 浏览器不可用，请打开应用后重新连接。", "浏览器操作超时，结果可能不确定。", "浏览器回执无法读取或与请求不符。", "梦境 Space 已不存在，请重新连接；原页面与元素引用已失效。", "梦境 Space 当前不可用。", "当前平台不支持生成助手启动脚本，请使用直接连接。"],
+  "zh-Hant": ["一般權限輔助程序未執行，請手動啟動產生的啟動檔後重新連線。", "ego 拒絕高權限用戶端，請啟動一般權限輔助程序後重新連線。", "請重新產生啟動檔，並重啟輔助程序後連線。", "此輔助程序屬於另一個 Space，請使用本部署專用目錄。", "ego 瀏覽器無法使用，請開啟應用程式後重新連線。", "瀏覽器操作逾時，結果可能不確定。", "瀏覽器回執無法讀取或與請求不符。", "夢境 Space 已不存在，請重新連線；原頁面與元素引用已失效。", "夢境 Space 目前無法使用。", "目前平台不支援產生助手啟動腳本，請使用直接連線。"],
+  "en": ["The ordinary-permission helper is not running. Start its generated launcher manually, then reconnect.", "ego rejected an elevated client. Start the ordinary-permission helper, then reconnect.", "Regenerate the launcher and restart the helper before reconnecting.", "This helper belongs to another Space. Use this deployment’s dedicated directory.", "ego is unavailable. Open the application, then reconnect.", "The browser operation timed out; its outcome may be uncertain.", "The browser receipt is unreadable or does not match the request.", "The dream Space no longer exists. Reconnect; its previous pages and element references are invalid.", "The dream Space is currently unavailable.", "Helper launcher generation is unavailable on this platform. Use a direct connection."],
+  "ja": ["通常権限のヘルパーが動作していません。生成した起動ファイルを手動で実行して再接続してください。", "ego が昇格した権限のクライアントを拒否しました。通常権限のヘルパーを起動して再接続してください。", "起動ファイルを再生成し、ヘルパーを再起動してから接続してください。", "このヘルパーは別の Space 用です。この環境専用のフォルダーを使用してください。", "ego を利用できません。アプリを開いて再接続してください。", "ブラウザー操作がタイムアウトし、結果が不明な可能性があります。", "ブラウザーの応答を読み取れないか、リクエストと一致しません。", "夢の Space がありません。再接続してください。以前のページと要素参照は無効です。", "夢の Space は現在利用できません。", "この環境ではヘルパー起動ファイルを生成できません。直接接続を使用してください。"],
+  "ko": ["일반 권한 도우미가 실행 중이 아닙니다. 생성된 시작 파일을 직접 실행한 뒤 다시 연결하세요.", "ego가 관리자 권한 클라이언트를 거부했습니다. 일반 권한 도우미를 시작한 뒤 다시 연결하세요.", "시작 파일을 다시 생성하고 도우미를 재시작한 뒤 연결하세요.", "이 도우미는 다른 Space에 속합니다. 현재 배포 전용 폴더를 사용하세요.", "ego를 사용할 수 없습니다. 앱을 연 뒤 다시 연결하세요.", "브라우저 작업 시간이 초과되어 결과가 불확실할 수 있습니다.", "브라우저 응답을 읽을 수 없거나 요청과 일치하지 않습니다.", "꿈 Space가 더 이상 없습니다. 다시 연결하세요. 이전 페이지와 요소 참조는 유효하지 않습니다.", "현재 꿈 Space를 사용할 수 없습니다.", "이 플랫폼에서는 도우미 시작 파일을 생성할 수 없습니다. 직접 연결을 사용하세요."],
+  "es-419": ["El asistente sin privilegios no está en ejecución. Inicia manualmente el archivo generado y vuelve a conectar.", "ego rechazó un cliente con privilegios elevados. Inicia el asistente sin privilegios y vuelve a conectar.", "Genera de nuevo el archivo de inicio y reinicia el asistente antes de conectar.", "Este asistente pertenece a otro Space. Usa la carpeta exclusiva de esta instalación.", "ego no está disponible. Abre la aplicación y vuelve a conectar.", "La operación del navegador agotó el tiempo; su resultado puede ser incierto.", "La respuesta del navegador no se puede leer o no coincide con la solicitud.", "El Space de sueños ya no existe. Vuelve a conectar; sus páginas y referencias anteriores ya no son válidas.", "El Space de sueños no está disponible en este momento.", "Esta plataforma no permite generar el iniciador del asistente. Usa una conexión directa."],
+  "fr": ["L’assistant sans privilèges ne fonctionne pas. Lancez manuellement le fichier généré, puis reconnectez-vous.", "ego a refusé un client avec des privilèges élevés. Lancez l’assistant sans privilèges, puis reconnectez-vous.", "Régénérez le lanceur et redémarrez l’assistant avant de vous reconnecter.", "Cet assistant appartient à un autre Space. Utilisez le dossier dédié à ce déploiement.", "ego est indisponible. Ouvrez l’application, puis reconnectez-vous.", "L’opération du navigateur a expiré ; son résultat peut être incertain.", "La réponse du navigateur est illisible ou ne correspond pas à la demande.", "Le Space des rêves n’existe plus. Reconnectez-vous ; ses anciennes pages et références sont invalides.", "Le Space des rêves est actuellement indisponible.", "Cette plateforme ne permet pas de générer le lanceur de l’assistant. Utilisez une connexion directe."],
+  "de": ["Der Helfer ohne Administratorrechte läuft nicht. Starten Sie die erzeugte Startdatei manuell und verbinden Sie sich erneut.", "ego hat einen Client mit erhöhten Rechten abgewiesen. Starten Sie den Helfer ohne Administratorrechte und verbinden Sie sich erneut.", "Erzeugen Sie die Startdatei erneut und starten Sie den Helfer neu, bevor Sie sich verbinden.", "Dieser Helfer gehört zu einem anderen Space. Verwenden Sie den eigenen Ordner dieser Installation.", "ego ist nicht verfügbar. Öffnen Sie die Anwendung und verbinden Sie sich erneut.", "Der Browservorgang hat das Zeitlimit überschritten; sein Ergebnis kann unklar sein.", "Die Browserantwort ist unlesbar oder passt nicht zur Anfrage.", "Der Traum-Space existiert nicht mehr. Verbinden Sie sich erneut; seine bisherigen Seiten und Elementverweise sind ungültig.", "Der Traum-Space ist derzeit nicht verfügbar.", "Auf dieser Plattform kann keine Helfer-Startdatei erstellt werden. Verwenden Sie eine direkte Verbindung."],
+  "pt-BR": ["O assistente sem privilégios não está em execução. Inicie manualmente o arquivo gerado e reconecte.", "O ego recusou um cliente com privilégios elevados. Inicie o assistente sem privilégios e reconecte.", "Gere novamente o iniciador e reinicie o assistente antes de reconectar.", "Este assistente pertence a outro Space. Use a pasta exclusiva desta instalação.", "O ego não está disponível. Abra o aplicativo e reconecte.", "A operação do navegador excedeu o tempo limite; o resultado pode ser incerto.", "A resposta do navegador não pode ser lida ou não corresponde à solicitação.", "O Space dos sonhos não existe mais. Reconecte; as páginas e referências anteriores são inválidas.", "O Space dos sonhos está indisponível no momento.", "Esta plataforma não permite gerar o iniciador do assistente. Use uma conexão direta."],
+  "it": ["L’assistente senza privilegi non è in esecuzione. Avvia manualmente il file generato e riconnettiti.", "ego ha rifiutato un client con privilegi elevati. Avvia l’assistente senza privilegi e riconnettiti.", "Rigenera il file di avvio e riavvia l’assistente prima di riconnetterti.", "Questo assistente appartiene a un altro Space. Usa la cartella dedicata a questa installazione.", "ego non è disponibile. Apri l’applicazione e riconnettiti.", "L’operazione del browser è scaduta; l’esito potrebbe essere incerto.", "La risposta del browser non è leggibile o non corrisponde alla richiesta.", "Lo Space dei sogni non esiste più. Riconnettiti; le pagine e i riferimenti precedenti non sono validi.", "Lo Space dei sogni non è al momento disponibile.", "Questa piattaforma non supporta la generazione del file di avvio dell’assistente. Usa una connessione diretta."],
+  "ru": ["Помощник с обычными правами не запущен. Запустите созданный файл вручную и подключитесь снова.", "ego отклонил клиент с повышенными правами. Запустите помощника с обычными правами и подключитесь снова.", "Создайте файл запуска заново и перезапустите помощника перед подключением.", "Этот помощник принадлежит другому Space. Используйте отдельный каталог этой установки.", "ego недоступен. Откройте приложение и подключитесь снова.", "Время операции браузера истекло; результат может быть неизвестен.", "Ответ браузера не читается или не соответствует запросу.", "Space сновидений больше не существует. Подключитесь снова; прежние страницы и ссылки на элементы недействительны.", "Space сновидений сейчас недоступен.", "На этой платформе нельзя создать файл запуска помощника. Используйте прямое подключение."],
+};
+
+const browserErrorCodes: Record<string, typeof egoBrowserErrorKeys[number]> = {
+  EGO_HELPER_UNAVAILABLE: 'helperUnavailable', EGO_HELPER_REQUIRED: 'helperRequired', EGO_CLIENT_ELEVATED: 'helperRequired',
+  EGO_HELPER_UNSUPPORTED: 'helperUnsupported', EGO_HELPER_VERSION: 'helperVersion', EGO_HELPER_SPACE_MISMATCH: 'helperMismatch', EGO_HELPER_MISMATCH: 'helperMismatch',
+  EGO_BROWSER_UNAVAILABLE: 'browserUnavailable', EGO_COMMAND_TIMEOUT: 'timeout', EGO_PAGE_EVALUATION_TIMED_OUT: 'timeout',
+  EGO_INVALID_RECEIPT: 'invalidReceipt', EGO_TASK_SPACE_NOT_FOUND: 'spaceMissing',
+  EGO_TASK_SPACE_INACTIVE: 'spaceUnavailable', EGO_TASK_SPACE_UNAVAILABLE: 'spaceUnavailable', EGO_TASK_SPACE_NOT_SELECTED: 'spaceUnavailable',
+};
+const legacyBrowserErrorCodes: Record<string, typeof egoErrorKeys[number]> = {
+  EGO_CLI_NOT_FOUND: 'notExecutable', EGO_INVALID_PATH: 'invalidPath', EGO_START_FAILED: 'startFailed',
+  EGO_CANCELLED: 'cancelled', EGO_COMMAND_CANCELLED: 'cancelled', EGO_TASK_HOST_DISCONNECTED: 'disconnected',
+  EGO_TASK_SPACE_USER_IN_CONTROL: 'userControl', EGO_TASK_SPACE_NAME_IN_USE: 'nameInUse',
+  EGO_RESPONSE_TOO_LARGE: 'responseTooLarge', EGO_IMAGE_TOO_LARGE: 'responseTooLarge',
+  EGO_RUNTIME_FAILED: 'commandFailed', EGO_OPERATION_FAILED: 'commandFailed',
+};
+
+export function egoBrowserErrorText(code: string | undefined, language?: string): string {
+  const s = strings(language);
+  if (code === 'EGO_STOPPED') return s.collectorStopped;
+  if (code === 'EGO_INVALID_ARGUMENT' || code === 'EGO_INVALID_ARGUMENTS') return s.configInvalid;
+  if (code === 'EGO_UNCERTAIN' || code === 'EGO_STATE_INVALID' || code === 'EGO_DREAM_SPACE_MISMATCH' || code === 'EGO_HELPER_INTERRUPTED') return s.egoUncertain;
+  const current = code && Object.hasOwn(browserErrorCodes, code) ? browserErrorCodes[code] : undefined;
+  if (current) return egoBrowserErrors[languageOf(language)][egoBrowserErrorKeys.indexOf(current)]!;
+  const legacy = code && Object.hasOwn(legacyBrowserErrorCodes, code) ? legacyBrowserErrorCodes[code] : undefined;
+  return legacy ? egoErrorText(legacy, language) : s.error;
+}
+
+function languageOf(language?: string): Language {
+  return DREAM_LANGUAGES.includes(language as Language) ? language as Language : 'en';
+}
+
+export function strings(language?: string): DreamStrings {
+  const languageKey = languageOf(language);
+  return { ...keyed(uiKeys, ui[languageKey]), ...keyed(setupKeys, setup[languageKey]), ...keyed(collectionKeys, collectionUi[languageKey]), ...keyed(egoUiKeys, egoUi[languageKey]), ...keyed(quotaUiKeys, quotaUi[languageKey]), ...keyed(dreamManagementKeys, dreamManagementUi[languageKey]), ...keyed(collectorOrderKeys, collectorOrderUi[languageKey]), ...keyed(qqTalkKeys, qqTalkUi[languageKey]), events: keyed(eventKeys, events[languageKey]) };
+}
+
+export function configLabels(language?: string): Record<ConfigLabelKey, string> {
+  return { ...keyed(configKeys, configs[languageOf(language)]), ...keyed(egoConfigKeys, egoConfigLabels[languageOf(language)]), ...keyed(quotaConfigKeys, quotaConfigLabels[languageOf(language)]) };
+}

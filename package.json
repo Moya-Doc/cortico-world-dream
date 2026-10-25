@@ -1,0 +1,83 @@
+{
+  "name": "cortico-world-dream",
+  "version": "0.11.0",
+  "type": "module",
+  "description": "Sleep events, daily news materials and searchable dream archives for Cortico",
+  "license": "MIT",
+  "keywords": [
+    "cortico-world",
+    "cortico"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.28.6",
+  "main": "./src/index.ts",
+  "cortico": {
+    "kind": "world",
+    "api": 6,
+    "tags": [
+      "internet",
+      "browser",
+      "companion",
+      "memory",
+      "im",
+      "qq",
+      "external-setup",
+      "requires-key",
+      "experimental",
+      "requires-extension",
+      "internal-state"
+    ],
+    "displayName": "Dream",
+    "describe": "describe.json",
+    "webUiClient": "dist/webui.js",
+    "webUiStyle": "dist/webui.css",
+    "locales": {
+      "zh": {
+        "displayName": "梦境",
+        "description": "睡眠调度、公开新闻素材与可查询的虚构梦境档案"
+      },
+      "en": {
+        "displayName": "Dream",
+        "description": "Sleep events, daily news materials and searchable dream archives for Cortico"
+      }
+    },
+    "icon": "assets/icon.png"
+  },
+  "files": [
+    "src",
+    "dist",
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "README_zh.md",
+    "CHANGELOG.md",
+    "describe.json",
+    "assets"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json",
+    "build": "esbuild webui/client.ts --bundle --format=esm --outfile=dist/webui.js && cp webui/style.css dist/webui.css && esbuild src/ego-transport/helper.ts --bundle --platform=node --format=esm --outfile=dist/ego-helper.mjs",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.10.0",
+    "cortico": "^0.2.6",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Moya-Doc/cortico-world-dream.git"
+  },
+  "homepage": "https://github.com/Moya-Doc/cortico-world-dream#readme",
+  "bugs": {
+    "url": "https://github.com/Moya-Doc/cortico-world-dream/issues"
+  }
+}
