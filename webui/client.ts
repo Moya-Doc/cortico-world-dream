@@ -3,10 +3,11 @@ import { configLabels, strings } from '../src/strings.ts';
 import { mountQQTalk } from './qq-talk.ts';
 import './style.css';
 
-type Backend = 'ego' | 'tavily' | 'browser';
+type Backend = 'ego' | 'tavily' | 'browser' | 'websearch';
 export interface DreamRecord {
   id: string; createdAt: string; title: string; text: string; materialIds: string[];
   sources: Array<{ title: string; url: string; content: string; publishedAt?: string }>;
+  score: number; tier: 'ordinary' | 'deep'; promotedAt: string | null;
 }
 export interface CollectorConfig {
   collectorOrder: Backend[] | null;
@@ -22,9 +23,9 @@ export interface DreamPanelState {
   materials: Array<{ id: string; topic: string; tag: '指定素材'; createdAt: string; lastProcessedDate: string | null }>;
   dreams: DreamRecord[];
   quota: { date: string; cycleUsed: number; cycleLimit: number; dailyUsed: number; dailyLimit: number; remaining: number };
-  keyConfigured: boolean; egoConfigured: boolean; browserConfigured: boolean;
+  keyConfigured: boolean; egoConfigured: boolean; browserConfigured: boolean; webSearchConfigured: boolean;
   activeBackend: Backend | null;
-  egoMissing: string[]; tavilyMissing: string[]; browserMissing: string[];
+  egoMissing: string[]; tavilyMissing: string[]; browserMissing: string[]; webSearchMissing: string[];
   egoConnection: {
     running: boolean; connected: boolean; connecting: boolean; halted: boolean; reason: string | null; code?: string;
     uncertain: boolean; spaceMissing: boolean; spaceId: number | null; spaceName: string;
@@ -127,8 +128,9 @@ function configurationStatus(ui: PanelUi, className: string) {
   const node = ui.element('span', `${className} dream-configuration-status`);
   const dot = ui.element('span', 'dream-status-dot'); dot.setAttribute('aria-hidden', 'true');
   const label = ui.element('span'); node.append(dot, label);
-  return { node, render(configured: boolean) {
-    node.dataset.configured = String(configured); label.textContent = configured ? ui.t.keyPresent : ui.t.keyMissing;
+  return { node, render(configured: boolean | null) {
+    node.dataset.configured = configured === null ? 'unknown' : String(configured);
+    label.textContent = configured === null ? ui.t.webSearchCheck : configured ? ui.t.keyPresent : ui.t.keyMissing;
   } };
 }
 function quotaBar(ui: PanelUi, label: string, kind: 'cycle' | 'daily') {
@@ -164,13 +166,16 @@ function connectionTest(ctx: WebUiPanelContext, ui: PanelUi) {
   const test = ui.button(t.testConnection, 'dream-test');
   const result = element('p', 'dream-test-result dream-secondary');
   result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite');
-  node.append(test, result, element('p', 'dream-secondary', t.testUsesSavedConfig));
+  const hint = element('p', 'dream-secondary dream-test-hint', t.testUsesSavedConfig);
+  node.append(test, result, hint);
   let testing = false;
-  const name = (value: Backend | null) => value === 'ego' ? t.egoTitle : value === 'tavily' ? 'Tavily' : value === 'browser' ? t.browserTitle : t.noBackend;
+  const name = (value: Backend | null) => value === 'ego' ? t.egoTitle : value === 'tavily' ? 'Tavily' : value === 'browser' ? t.browserTitle : value === 'websearch' ? t.webSearchTitle : t.noBackend;
   function update() {
     const state = ui.state;
-    test.disabled = ui.busy || !state?.egoConnection.running || state?.connectionTest.status === 'testing' || state?.collection.status === 'collecting';
+    const external = state?.readiness.backend === 'websearch';
+    test.disabled = ui.busy || external || !state?.egoConnection.running || state?.connectionTest.status === 'testing' || state?.collection.status === 'collecting';
     test.textContent = testing || state?.connectionTest.status === 'testing' ? t.testRunning : t.testConnection;
+    hint.textContent = external ? t.webSearchTestUnsupported : t.testUsesSavedConfig;
   }
   test.addEventListener('click', () => void ui.operate(async () => {
     testing = true; update();
@@ -202,7 +207,7 @@ function collectionSummary(ctx: WebUiPanelContext, ui: PanelUi, showConnectionTe
   card.append(backend, result, usage, quotaStatus, resultError, attempts);
   const test = showConnectionTest ? connectionTest(ctx, ui) : undefined;
   if (test) card.append(test.node);
-  const name = (value: Backend | null) => value === 'ego' ? t.egoTitle : value === 'tavily' ? 'Tavily' : value === 'browser' ? t.browserTitle : t.noBackend;
+  const name = (value: Backend | null) => value === 'ego' ? t.egoTitle : value === 'tavily' ? 'Tavily' : value === 'browser' ? t.browserTitle : value === 'websearch' ? t.webSearchTitle : t.noBackend;
   function update() {
     test?.update();
   }
@@ -223,15 +228,21 @@ function collectionSummary(ctx: WebUiPanelContext, ui: PanelUi, showConnectionTe
 function collectionSelection(ctx: WebUiPanelContext, ui: PanelUi) {
   const { t, element } = ui;
   const form = element('form', 'dream-collector-order-form');
-  const list = element('ul', 'dream-collector-order');
+  const groups = (['builtin', 'world'] as const).map(kind => {
+    const group = element('fieldset', 'dream-collector-group'); group.dataset.group = kind;
+    const list = element('ul', 'dream-collector-order');
+    group.append(element('legend', '', kind === 'builtin' ? t.collectorBuiltIn : t.collectorWorldExtensions), list);
+    if (kind === 'world') group.append(element('p', 'dream-secondary dream-websearch-hint', t.webSearchCheckHint));
+    return { kind, group, list };
+  });
   const empty = element('p', 'dream-secondary dream-collector-empty', t.collectionNoneSelected);
   const save = ui.button(t.collectorOrderSave, 'dream-primary dream-collector-order-save'); save.type = 'submit';
-  const methods = ['ego', 'tavily', 'browser'] as const;
+  const methods = ['ego', 'tavily', 'browser', 'websearch'] as const;
   let order: Backend[] = [], dirty = false, loaded = false;
   const rows = methods.map(backend => {
     const row = element('li', 'dream-collector-choice'); row.dataset.backend = backend;
-    const name = backend === 'ego' ? t.egoTitle : backend === 'tavily' ? 'Tavily' : t.browserTitle;
-    const position = element('span', 'dream-collector-position dream-secondary'); position.setAttribute('aria-hidden', 'true');
+    const name = backend === 'ego' ? t.egoTitle : backend === 'tavily' ? 'Tavily' : backend === 'websearch' ? t.webSearchTitle : t.browserTitle;
+    const position = element('span', 'dream-collector-position dream-secondary');
     const checkbox = ui.input('dream-collector-selected', 'checkbox'); checkbox.name = backend;
     const label = element('label', 'dream-collector-label'); label.append(checkbox, element('span', '', name));
     const status = configurationStatus(ui, `dream-${backend === 'tavily' ? 'key' : backend}-state dream-secondary`);
@@ -250,10 +261,16 @@ function collectionSelection(ctx: WebUiPanelContext, ui: PanelUi) {
   });
   function update() {
     const display = [...order, ...methods.filter(backend => !order.includes(backend))];
-    for (const [position, backend] of display.entries()) {
+    for (const { kind, list } of groups) {
+      const members = display.filter(backend => (backend === 'websearch' ? 'world' : 'builtin') === kind);
+      for (const [position, backend] of members.entries()) {
+        const row = rows.find(item => item.backend === backend)!.row;
+        if (list.children[position] !== row) list.insertBefore(row, list.children[position] ?? null);
+      }
+    }
+    for (const backend of display) {
       const item = rows.find(row => row.backend === backend)!;
       const index = order.indexOf(backend);
-      if (list.children[position] !== item.row) list.insertBefore(item.row, list.children[position] ?? null);
       item.checkbox.checked = index >= 0;
       item.checkbox.disabled = ui.busy || !loaded;
       item.position.textContent = index >= 0 ? String(index + 1) : '';
@@ -263,7 +280,7 @@ function collectionSelection(ctx: WebUiPanelContext, ui: PanelUi) {
     }
     empty.hidden = order.length > 0; save.disabled = ui.busy || !loaded || !dirty;
   }
-  form.append(list, empty, element('p', 'dream-secondary', t.collectorOrderHint), save);
+  form.append(...groups.map(({ group }) => group), empty, element('p', 'dream-secondary', t.collectorPriorityHint), save);
   form.addEventListener('submit', event => {
     event.preventDefault(); if (!loaded || !dirty) return;
     const value = [...order];
@@ -278,6 +295,11 @@ function collectionSelection(ctx: WebUiPanelContext, ui: PanelUi) {
     if (!dirty) order = [...(state.collectorConfig.collectorOrder ?? [])];
     loaded = true;
     for (const item of rows) {
+      if (item.backend === 'websearch') {
+        item.status.render(state.webSearchConfigured ? null : false);
+        item.status.node.title = [t.webSearchCheckHint, ...state.webSearchMissing].join(' · ');
+        continue;
+      }
       const ready = item.backend === 'ego' ? state.egoConfigured : item.backend === 'tavily' ? state.tavilyMissing.length === 0 : state.browserConfigured;
       const missing = item.backend === 'ego' ? state.egoMissing : item.backend === 'tavily' ? state.tavilyMissing : state.browserMissing;
       item.status.render(ready); item.status.node.title = missing.join(' · ');
@@ -343,13 +365,14 @@ export function mountDreamPanel(ctx: WebUiPanelContext): { dispose(): void } {
   const query = ui.input('', 'search'); query.maxLength = 500; query.placeholder = t.queryPlaceholder; query.setAttribute('aria-label', t.queryPlaceholder);
   const search = button(t.query); search.type = 'submit'; queryForm.append(query, search);
   archiveHeader.append(element('h3', '', t.archive), queryForm);
-  const archive = element('div', 'dream-archive'); archiveCard.append(archiveHeader, archive);
+  const archive = element('div', 'dream-archive');
+  archiveCard.append(archiveHeader, element('p', 'dream-secondary dream-retention-hint', t.archiveRetentionHint), archive);
   panel.append(header, phaseHint, wakeAt, controls, ui.notice, ui.failure, serverError, summary.card, materialsCard, alarmsCard, archiveCard);
   let currentQuery = '', archiveSerial = 0;
   const openDreams = new Set<string>();
   const entries = new Map<string, {
     container: HTMLElement;
-    item: HTMLDetailsElement; time: HTMLTimeElement; title: HTMLSpanElement; text: HTMLParagraphElement;
+    item: HTMLDetailsElement; time: HTMLTimeElement; title: HTMLSpanElement; tier: HTMLSpanElement; score: HTMLParagraphElement; text: HTMLParagraphElement;
     heading: HTMLHeadingElement; sources: HTMLUListElement; sourceKey: string;
   }>();
   const emptyArchive = element('p', 'dream-empty', t.emptyDreams);
@@ -370,11 +393,15 @@ export function mountDreamPanel(ctx: WebUiPanelContext): { dispose(): void } {
         const item = element('details', 'dream-entry'); item.open = openDreams.has(record.id);
         const row = element('summary', 'dream-entry-summary');
         const time = element('time', 'dream-secondary');
+        const titleRow = element('span', 'dream-entry-heading');
         const title = element('span', 'dream-entry-title');
+        const tier = element('span', 'dream-tier', t.deepDreamLabel); tier.hidden = true;
+        titleRow.append(title, tier);
+        const score = element('p', 'dream-secondary dream-score');
         const text = element('p', 'dream-text');
         const heading = element('h4', 'dream-source-heading', t.sources);
         const sources = element('ul', 'dream-sources');
-        row.append(time, title); item.append(row, text, heading, sources);
+        row.append(time, titleRow); item.append(row, score, text, heading, sources);
         const remove = element('button', 'dream-button dream-subtle dream-record-remove', t.removeDream); remove.type = 'button';
         const confirmation = element('div', 'dream-record-confirmation'); confirmation.hidden = true;
         const confirm = element('button', 'dream-button dream-record-confirm', t.confirmDelete); confirm.type = 'button';
@@ -386,10 +413,12 @@ export function mountDreamPanel(ctx: WebUiPanelContext): { dispose(): void } {
           await ctx.invoke('removeDream', [record.id]); openDreams.delete(record.id);
         }), { signal: ctx.signal });
         container.append(item, remove, confirmation);
-        entry = { container, item, time, title, text, heading, sources, sourceKey: '' }; entries.set(record.id, entry);
+        entry = { container, item, time, title, tier, score, text, heading, sources, sourceKey: '' }; entries.set(record.id, entry);
       }
       const title = record.title?.trim() || Array.from(record.text.replace(/\s+/gu, ' ').trim()).slice(0, 80).join('');
       if (entry.title.textContent !== title) entry.title.textContent = title;
+      entry.tier.hidden = record.tier !== 'deep';
+      entry.score.textContent = `${t.dreamScore} · ${record.score}`;
       if (entry.text.textContent !== record.text) entry.text.textContent = record.text;
       if (entry.time.dateTime !== record.createdAt) { entry.time.dateTime = record.createdAt; entry.time.textContent = ui.date(record.createdAt); }
       entry.heading.hidden = entry.sources.hidden = !record.sources.length;

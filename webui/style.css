@@ -23,7 +23,7 @@
   gap: 14px;
   flex-wrap: wrap;
 }
-.dream-panel .dream-phase {
+.dream-panel .dream-phase, .dream-panel .dream-tier {
   font-size: 12px;
   border: 1px solid var(--dream-line);
   border-radius: 999px;
@@ -89,7 +89,9 @@
 .dream-panel .dream-entry-summary { cursor: pointer; display: list-item; }
 .dream-panel .dream-entry-summary::marker { color: var(--dream-muted); }
 .dream-panel .dream-entry-summary time { display: block; }
-.dream-panel .dream-entry-title { display: block; margin-top: 5px; font-weight: 550; overflow-wrap: anywhere; }
+.dream-panel .dream-entry-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
+.dream-panel .dream-entry-title { font-weight: 550; overflow-wrap: anywhere; min-width: 0; }
+.dream-panel .dream-score { margin-top: 10px; }
 .dream-panel .dream-text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 10px; }
 .dream-panel .dream-source-heading { font-size: 12px; color: var(--dream-muted); font-weight: 500; margin-top: 15px; margin-bottom: 6px; }
 .dream-panel .dream-sources { display: grid; gap: 5px; font-size: 12px; }
@@ -120,6 +122,9 @@
 }
 
 .dream-panel .dream-collector-order-form { display: grid; gap: 12px; }
+.dream-panel .dream-collector-group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.dream-panel .dream-collector-group legend { margin-bottom: 12px; padding: 0; font-weight: 600; }
+.dream-panel .dream-websearch-hint { margin-bottom: 0; }
 .dream-panel .dream-collector-order { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .dream-panel .dream-collector-choice { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
 .dream-panel .dream-collector-label { display: flex; align-items: center; gap: 9px; font-size: 13px; cursor: pointer; }

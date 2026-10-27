@@ -1,4 +1,4 @@
-<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/archive.ts, src/model-text.ts, src/ENV_PROMPT.en.md, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts, webui/style.css, package.json -->
+<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/archive.ts, src/usage.ts, src/model-text.ts, src/ENV_PROMPT.en.md, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts, webui/style.css, package.json -->
 
 # cortico-world-dream
 
@@ -67,7 +67,7 @@ A natural-language local message first wakes Coo under the ordinary-message poli
 
 Add a public topic or public link in **Designated materials** for sleep dreams, or ask Coo in eligible chat to save a topic. Chat additions use `dream_add_material` and the incoming event cursor. Topics have a 500-character limit, carry the `指定素材` tag, and remain until deleted in the panel.
 
-The prompt asks Coo to process designated materials not yet retrieved on the deployment-local day before choosing its own news. A successful, nonempty `dream_search` or `dream_ego_read` with that material's id marks it processed for the day; failed or empty reads do not. Other ego actions do not mark a material processed. Priority is an instruction to Coo; the World records processing dates.
+The prompt asks Coo to process designated materials not yet retrieved on the deployment-local day before choosing its own news. A successful, nonempty `dream_search` or `dream_ego_read` with that material's id marks it processed for the day. Official WebSearch marks it when `dream_web_search_result` accepts sources for the request; failed or empty results do not. Other ego actions do not mark a material processed. Priority is an instruction to Coo; the World records processing dates.
 
 **Daydream alarms and topics** has separate time and public-topic fields. Topics are required, limited to 500 characters and retained for every occurrence of that alarm. Each time can have only one alarm. Daydreams reuse their alarm's topic without a daily processed flag and do not borrow sleep materials. Enable scheduled daydreams in **Configuration**, then add or edit the alarms in the sleep panel.
 
@@ -83,11 +83,25 @@ The World derives the index from its archive when Cortico rebuilds the environme
 
 Use a record's delete control and confirm to remove it and its share-notification entry in one archive write. Deletion does not refund collection counts or remove designated materials and alarms. It cannot retract existing events, model context, QQ drafts or sent messages.
 
-Existing version 1 archives remain readable. Records without titles receive a short body excerpt marked `titleSource: "legacy-excerpt"`; their text and sources remain intact, and missing dream kinds stay unknown. New Coo-authored titles use `titleSource: "summary"`. Loading old records does not rewrite the file or send them to a model to generate titles. The next normal archive write saves the compatibility fields.
+Existing version 1 archives remain readable. Records without titles receive a short body excerpt marked `titleSource: "legacy-excerpt"`; their text and sources remain intact, and missing dream kinds stay unknown. New Coo-authored titles use `titleSource: "summary"`. Compatibility fields are saved on the next archive write; no model call generates missing titles. The retention rules below apply after upgrade.
 
 On upgrade to 0.7.0, old `daydreamTimes` are migrated once to alarms with empty topics. Fill each topic before that alarm can run; deleted alarms are not recreated from the old setting. Existing designated materials remain available only to sleep dreams. Historical dreams are not automatically queued for sharing.
 
 Another World can emit an event asking Coo to call `dream_query` and `dream_read` before deciding whether to start a conversation. Context-building or memory-query workflows can request the same tools. This package does not add that conversation World or modify existing Memory extensions.
+
+## Retention, reference scores and deep dreams
+
+Version 0.12.1 keeps ordinary dreams for **30 × 24 hours**, up to **100 records**. Records exactly 30 days old remain until they exceed that age. Cleanup runs on startup, every minute while running, before archive tool reads, and atomically when appending a dream. It first removes expired ordinary records, then removes the oldest ordinary records by creation time until at most 100 remain. Deep records are exempt from both limits. Manual deletion works for either tier.
+
+The existing `dream/archive.json` stores each record's `score`, `tier` (`ordinary` or `deep`) and nullable `promotedAt`. Old records start ordinary at zero points and keep their body and sources until the retention policy removes them. Cleanup removes the record's collected sources, sharing state and usage receipts together; it preserves designated topics, daydream alarms and consumed collection counts. It cannot retract already sent messages or old model context.
+
+**Configuration → Dream archive → Deep dream threshold** defaults to **3** (integer 0–1000). After each newly credited reply, a score strictly greater than this value promotes the record; the fourth valid reference promotes it with the default. Threshold changes take effect on the next credited use. Promotion is permanent even if the threshold later rises. `dream_query` and `dream_read` include the score and tier and can still retrieve deep records. Their titles carry a **Deep dream** badge in the archive whether collapsed or expanded.
+
+Scoring supports **official QQ and desktop pet replies**. For a real current topic, Coo reads an older dream using `dream_read({id, replyTo})`. `replyTo` identifies the incoming QQ `messageId` and optional `target` (`group:<id>` or `private:<id>`), or a desktop `eventCursor` from `dream.message_ref`. The incoming message must be within five minutes, predate the read, and follow the dream's creation. Reading issues a five-minute `usage.usageToken` without adding points. Coo then sends its reply and calls `dream_mark_used({id, usageToken, reply})`: QQ supplies the outgoing `messageId` from the successful `qq_confirm` receipt; desktop supplies the exact visible reply `text`, joining its spoken beats without action markup.
+
+The World verifies a matching channel output after that read in the same conversation. QQ evidence confirms API send success; desktop evidence confirms acceptance of the utterance, not completed playback or a read receipt. Topic relevance and whether the reply uses the dream remain Coo's judgment. An asynchronous desktop record may require retrying the score report; the reply must not be resent for scoring. Ordinary reads, queries, generation, failed sends, drafts and automatic QQ dream sharing do not count. A matching automatic share suggestion between the incoming message and output rejects ambiguous attribution. Console output currently has no verified delivery evidence and does not count. QQ speakers need not be command owners to provide a relevant conversational topic.
+
+Each reply adds at most one point per dream. Opaque reply identities are stored in `usageReceipts` in the same archive for retry deduplication; chat bodies are not copied there. Prepared tokens stay in memory and expire after five minutes, sleep, daydream start or restart. Raising a score and recording its receipt use one atomic archive write. If using a custom environment prompt, merge the retention and reference-scoring instructions from `src/ENV_PROMPT.en.md`, then reload the system prefix.
 
 ## Optional QQ dream sharing
 
@@ -100,6 +114,10 @@ For each queued record, the World randomly recommends one group or private recip
 Pending notifications survive restart, and persisted notification events are checked to avoid repeating a suggestion after interruption. Disabling dream sharing or emptying both recipient lists clears pending work; removing a selected recipient discards its pending suggestion. Re-enabling the feature does not queue historical records. Deleting a dream clears its notification entry but cannot cancel a QQ draft or message already created elsewhere. Upgrading to 0.11.0 preserves existing owners, groups and pending group suggestions; the new private list defaults to empty. QQ settings move from **Configuration** to **QQ dream sharing** without renaming existing stored keys.
 
 ## Collection backends
+
+In **Sleep and dreams → Material collection**, **Built-in** contains ego, Tavily and web search; **World extensions** contains **Official WebSearch (called by Coo)**. Numbers show the shared priority across both groups, and the move buttons adjust that order. Official WebSearch is unchecked by default. Version 0.12.0 preserves existing `collectorOrder` values; selecting the new method adds `websearch` to that same array.
+
+Official WebSearch availability is checked by Coo when a dream reaches that method. Its status says **Coo checks tool availability**; local configuration readiness does not establish that `web_search` is installed or usable. Configure provider choices such as DeepSeek or Brave and their credentials in the official World, using the choices supported by your installed version. Dream neither reads those settings nor discovers a tool list.
 
 The sidebar has one **Material collection configuration** indicator. Green means at least one checked backend has all required configuration; gray means none does. Backend indicators show configuration completeness, while **Currently using** identifies the current backend separately. This does not certify credentials, browser connectivity or search results. Hover text and connection results provide missing settings and errors.
 
@@ -157,6 +175,10 @@ There is no fixed ego search website: Coo chooses public HTTP(S) pages and follo
 
 ### Selection and search
 
+For the `websearch` method, `dream_search` returns `needsWebSearch`, the public query, current quota and a `requestId`. Coo checks its available tools, calls the official `web_search` according to its declaration, then submits returned titles, public HTTPS URLs and excerpts through `dream_web_search_result` with the `cycleId` and `requestId`. The World assigns source ids for `dream_record`, counts distinct registered URLs and marks a designated sleep material processed only when sources are accepted. Source provenance identifies the content as model-reported from `web_search`; Dream does not independently verify that tool's response. Each handoff accepts one report, and a new query requires a new `dream_search` call.
+
+An absent tool, failed search or empty result is reported with `failure: "unavailable"`, `"failed"` or `"empty"`. The same dream continues with the next selected method. Waking, expiry or a newer request makes old reports unusable. Dream cannot guarantee cancellation of an official tool already running in another World. **Test collection connection** cannot run this method and displays the Coo availability-check explanation instead. Merge these rules from `src/ENV_PROMPT.en.md` into any saved prompt override, then reload the system prefix.
+
 The saved `collectorOrder` array is the only selection. For example, `["ego", "tavily", "browser"]` tries ego, then Tavily, then web search; `[]` disables collection. Each dream keeps its starting order and moves forward when a method is unavailable or fails, or a search returns no usable sources. It never returns to an earlier method, restarts sleep or resets source quotas. All methods share the same dream deadline and source limits. If every selected method is exhausted, Coo can record a dream from existing sources; with no sources, the dream is skipped without asking for manual help or inventing material.
 
 Starting with `dream_search` registers the public query and optional sleep `materialId` before ego browsing. If ego is blocked, the World can then run the next backend with that query. An older direct ego call without a registered query returns `needsSearch` when fallback needs one; Coo continues with `dream_search` on the same topic. It must not infer a query from an error or private page, reclaim control or ask the user to restore ego.
@@ -168,6 +190,7 @@ On upgrade to 0.8.0, a `null` `collectorOrder` is migrated once from the old sel
 | `tavily` | Sends news searches to `https://api.tavily.com/search` with a one-day time range. Retains returned excerpts, titles, links and dates when present; requests no raw pages, generated answers or images. |
 | `ego` | Uses the installed `ego-browser nodejs` API for interactive public-page browsing, snapshots and page screenshots inside the owned dream Space. |
 | `browser` | Web search: constructs fixed public search URLs and reads HTML/RSS result titles, links and excerpts over HTTP. It needs no Chrome installation, Profile or API key. |
+| `websearch` | Coo calls the official `web_search` and reports its returned public source excerpts to Dream. The official World owns provider selection, requests and credentials. |
 
 Web search uses the URL-building and result-parsing approach from [cortico-world-netlingo](https://github.com/danhuangpaii/cortico-world-netlingo/tree/38fea2eed308fc3a1f4865312d53a582b98279bf). It URL-encodes the same query and tries these fixed endpoints in order, stopping at the first usable result set:
 
@@ -178,13 +201,13 @@ Web search uses the URL-building and result-parsing approach from [cortico-world
 
 An HTTP error, timeout, oversized response or lack of valid excerpts advances to the next engine. Each engine gets at most 12 seconds or one quarter of the configured total request timeout, whichever is shorter; the whole search is also subject to that total timeout. Responses are capped at 512 KiB, and each accepted excerpt at 12,000 characters. The parser accepts only titled results with nonempty excerpts and public HTTPS domain URLs without credentials or custom ports. It does not visit result links, execute scripts, load page resources or read browser profiles. Endpoint DNS addresses are checked for public routing, and redirects are rejected. Search-engine HTML changes, challenges or login requirements can make a method unavailable.
 
-Tavily and web search default to a 30-second total timeout and a 5-result limit per call. Search results may lack publication dates; Coo must assess whether they suit the requested day. Tavily's one-day range also does not guarantee that each article was published today. Waking, cancellation and shutdown abort collection without trying another engine or backend and prevent old cycles from saving. Source text and browser action receipts are untrusted data, not instructions. ego processes receive a minimal environment without the Tavily credential.
+Tavily and built-in web search default to a 30-second total timeout and a 5-result limit per call. Search results may lack publication dates; Coo must assess whether they suit the requested day. Tavily's one-day range also does not guarantee that each article was published today. Waking, cancellation and shutdown abort Dream-owned collection without trying another engine or backend and prevent old cycles from saving. Source text and browser action receipts are untrusted data, not instructions. ego processes receive a minimal environment without the Tavily credential.
 
 ## Data, files and network access
 
 | Location or connection | Purpose |
 | --- | --- |
-| `<deployment dataDir>/dream/archive.json` | Sleep topics/processing dates, fixed-topic daydream alarms, dream titles/text/sources, share-notification state and `collectionCounts` keyed by `YYYY-MM-DD`; saved atomically in one file, with no automatic expiry. |
+| `<deployment dataDir>/dream/archive.json` | Sleep topics/processing dates, daydream alarms, dream titles/text/sources/scores/tiers, sharing state, usage receipt identities and daily collection counts; one atomic file. Ordinary dreams are subject to the 30-day/100-record retention limits. |
 | `<deployment dataDir>/dream/state.json` | Sleep deadline and schedule execution dates. |
 | `<deployment dataDir>/dream/ego/state.json` | Owned Space identity, halted/uncertain state and the last unknown operation outcome across restarts. |
 | `<deployment dataDir>/dream/ego/rounds/round-*` | Per-call `script.mjs`, `result.json` and optional `page.png`; removed after success, failure or cancellation. |

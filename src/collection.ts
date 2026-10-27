@@ -9,7 +9,7 @@ export const COLLECTOR_FIELDS = [
   'timeoutMs', 'maxResults', 'maxSourcesPerDream', 'maxSourcesPerDay',
 ] as const;
 export type CollectorConfig = Pick<DreamConfigSection, typeof COLLECTOR_FIELDS[number]>;
-const backends: readonly CollectionBackend[] = ['ego', 'tavily', 'browser'];
+const backends: readonly CollectionBackend[] = ['ego', 'tavily', 'browser', 'websearch'];
 
 function validOrder(value: unknown): value is CollectionBackend[] {
   return Array.isArray(value) && value.length <= backends.length && new Set(value).size === value.length
@@ -46,17 +46,19 @@ export function collectorReadiness(config: DreamConfigSection, key: string, lang
   const keyConfigured = Boolean(key.trim()) && !/\s/.test(key) && key.length <= 1024;
   const egoMissing = egoFields.map(field => labels[field]);
   const browserMissing = [...quotas, ...common].map(field => labels[field]);
+  const webSearchMissing = quotas.map(field => labels[field]);
   const tavilyMissing = [...quotas, ...common].map(field => labels[field]).concat(keyConfigured ? [] : [t.keyTitle]);
   const egoConfigured = !egoMissing.length;
   const browserConfigured = !browserMissing.length;
-  const missingByBackend = { ego: egoMissing, tavily: tavilyMissing, browser: browserMissing };
+  const webSearchConfigured = !webSearchMissing.length;
+  const missingByBackend = { ego: egoMissing, tavily: tavilyMissing, browser: browserMissing, websearch: webSearchMissing };
   const order = selectedBackends(config);
   const backend = order.find(item => !missingByBackend[item].length) ?? null;
-  const names = { ego: t.egoTitle, tavily: 'Tavily', browser: t.browserTitle };
+  const names = { ego: t.egoTitle, tavily: 'Tavily', browser: t.browserTitle, websearch: t.webSearchTitle };
   const invalid = config.collectorOrder != null && !validOrder(config.collectorOrder);
   const missing = invalid ? [t.collectorOrderInvalid] : !order.length ? [t.collectionNoneSelected]
     : order.flatMap(item => missingByBackend[item].map(field => `${names[item]}: ${field}`));
-  return { egoConfigured, keyConfigured, browserConfigured, activeBackend: backend, egoMissing, tavilyMissing, browserMissing,
+  return { egoConfigured, keyConfigured, browserConfigured, webSearchConfigured, activeBackend: backend, egoMissing, tavilyMissing, browserMissing, webSearchMissing,
     readiness: { ready: backend !== null, backend, missing } };
 }
 

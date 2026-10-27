@@ -2,9 +2,10 @@
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { WEB_SEARCH_ENGINES } from './web-search.ts';
+import type { CollectionBackend } from './config.ts';
 
 export interface SearchOptions {
-  backend: 'tavily' | 'ego' | 'browser';
+  backend: CollectionBackend;
   apiKey: string;
   timeoutMs: number;
   maxResults: number;
@@ -15,6 +16,8 @@ export interface SearchResult {
   url: string;
   content: string;
   publishedAt?: string;
+  /** Coo reports this tool's output; Dream does not independently verify that tool call. */
+  provenance?: { tool: 'web_search'; reportedBy: 'model' };
 }
 
 export interface SearchClient {
@@ -45,7 +48,7 @@ function publicHost(host: string): boolean {
     && !/(?:^|\.)(?:localhost|local|internal|lan|home|test|invalid)$/i.test(host);
 }
 
-function publicUrl(raw: string): URL {
+export function publicUrl(raw: string): URL {
   let url: URL;
   try { url = new URL(raw); } catch { return fail('Search URL is invalid.'); }
   if (raw.length > 8192 || url.protocol !== 'https:' || url.username || url.password || url.port
@@ -211,6 +214,7 @@ export function createSearchClient(options: () => SearchOptions): SearchClient {
           timeout = setTimeout(() => { timedOut = true; controller.abort(); }, config.timeoutMs);
           let result: SearchResult[];
           if (config.backend === 'ego') fail('Use the interactive dream_ego browser tools for ego collection.');
+          if (config.backend === 'websearch') fail('The official web_search tool must be called by Coo.');
           if (config.backend === 'tavily') result = await tavily(config, text, controller.signal);
           else result = await webSearch(config, text, controller.signal);
           controller.signal.throwIfAborted();

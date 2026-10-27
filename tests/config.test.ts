@@ -31,7 +31,7 @@ describe('Dream configuration groups', () => {
     for (const language of DREAM_LANGUAGES) {
       const groups = dreamConfigGroups(language), t = strings(language), labels = configLabels(language);
       expect(groups.map(group => group.schema.title)).toEqual([
-        t.groupSleepTitle, t.groupCollectionTitle, t.egoTitle,
+        t.groupSleepTitle, t.groupCollectionTitle, t.archive, t.egoTitle,
       ]);
       for (const group of groups) for (const [path, property] of Object.entries(group.schema.properties)) {
         expect(property.title).toBe(labels[path.slice('worlds.dream.'.length) as keyof typeof labels]);
@@ -53,6 +53,20 @@ describe('Dream configuration groups', () => {
   it('makes public web search ready without browser paths or custom search URLs', () => {
     const config: DreamConfigSection = { ...DREAM_DEFAULTS, collectorOrder: ['browser'], browserExecutableFile: '', searchUrlTemplate: '', allowedDomains: '' };
     expect(collectorReadiness(config, '', 'en').readiness).toEqual({ ready: true, backend: 'browser', missing: [] });
+  });
+  it('provides one hot archive threshold with integer bounds and translated promotion rules', () => {
+    for (const language of DREAM_LANGUAGES) {
+      const archive = dreamConfigGroups(language).find(group => group.id === 'world:dream:archive')!;
+      const field = archive.schema.properties['worlds.dream.deepDreamThreshold'];
+      expect(Object.keys(archive.schema.properties)).toEqual(['worlds.dream.deepDreamThreshold']);
+      expect(field).toMatchObject({ type: 'integer', minimum: 0, maximum: 1000, 'x-hot': true,
+        title: configLabels(language).deepDreamThreshold, description: strings(language).deepDreamThresholdDescription });
+      expect(DREAM_DEFAULTS.deepDreamThreshold).toBeGreaterThanOrEqual(field.minimum!);
+      expect(DREAM_DEFAULTS.deepDreamThreshold).toBeLessThanOrEqual(field.maximum!);
+      for (const key of ['archiveRetentionHint', 'deepDreamLabel', 'dreamScore', 'deepDreamThresholdDescription'] as const) {
+        expect(strings(language)[key].trim()).toBeTruthy();
+      }
+    }
   });
   it('validates article quotas for every backend independently of per-search result limits', () => {
     const fields = Object.assign({}, ...dreamConfigGroups('en').map(group => group.schema.properties));
@@ -130,6 +144,21 @@ describe('ego collection configuration', () => {
 });
 
 describe('ordered collection selection', () => {
+  it('accepts optional official WebSearch in the shared priority list without changing defaults', () => {
+    const collectorOrder = ['websearch', 'browser', 'ego', 'tavily'];
+    expect(collectorPatch({ collectorOrder })).toEqual({ collectorOrder });
+    expect(selectedBackends({ ...DREAM_DEFAULTS })).not.toContain('websearch');
+    expect(selectedBackends({ ...DREAM_DEFAULTS, collectorOrder: ['websearch', 'browser'] })).toEqual(['websearch', 'browser']);
+  });
+
+  it('checks only Dream quotas for official WebSearch and does not imply tool availability', () => {
+    const config: DreamConfigSection = { ...DREAM_DEFAULTS, collectorOrder: ['websearch'], timeoutMs: 0, maxResults: 0, egoExecutableFile: 'invalid/path' };
+    expect(collectorReadiness(config, '', 'en')).toMatchObject({ webSearchConfigured: true, webSearchMissing: [],
+      readiness: { ready: true, backend: 'websearch', missing: [] } });
+    expect(collectorReadiness({ ...config, maxSourcesPerDream: 0 }, '', 'en')).toMatchObject({ webSearchConfigured: false,
+      readiness: { ready: false, backend: null } });
+  });
+
   it.each([
     { backend: 'auto', egoEnabled: true, expected: ['ego', 'tavily'] },
     { backend: 'auto', egoEnabled: false, expected: ['tavily'] },

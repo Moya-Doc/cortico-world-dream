@@ -14,17 +14,23 @@ export interface PendingShare {
 export interface DreamRecord {
   id: string; createdAt: string; title: string; titleSource: 'summary' | 'legacy-excerpt';
   text: string; materialIds: string[]; sources: SearchResult[];
+  score: number; tier: 'ordinary' | 'deep'; promotedAt: string | null;
   kind?: DreamKind; alarmId?: string; topic?: string;
 }
+interface UsageReceipt { recordId: string; replyKey: string }
 interface ArchiveData {
   version: 1; materials: Material[]; dreams: DreamRecord[]; collectionCounts: Record<string, number>;
   daydreamAlarms: DaydreamAlarm[]; daydreamAlarmsMigrated: boolean; shares: PendingShare[];
+  usageReceipts: UsageReceipt[];
 }
-type StoredDreamRecord = Omit<DreamRecord, 'title' | 'titleSource'> & Partial<Pick<DreamRecord, 'title' | 'titleSource'>>;
-type AddedArchiveFields = 'collectionCounts' | 'daydreamAlarms' | 'daydreamAlarmsMigrated' | 'shares';
+type AddedDreamFields = 'title' | 'titleSource' | 'score' | 'tier' | 'promotedAt';
+type StoredDreamRecord = Omit<DreamRecord, AddedDreamFields> & Partial<Pick<DreamRecord, AddedDreamFields>>;
+type AddedArchiveFields = 'collectionCounts' | 'daydreamAlarms' | 'daydreamAlarmsMigrated' | 'shares' | 'usageReceipts';
 type StoredArchiveData = Omit<ArchiveData, 'dreams' | AddedArchiveFields> & { dreams: StoredDreamRecord[] } & Partial<Pick<ArchiveData, AddedArchiveFields>>;
 
 export const DREAM_TITLE_MAX_LENGTH = 80;
+export const DREAM_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const DREAM_MAX_ORDINARY_RECORDS = 100;
 
 export function textInput(value: unknown, limit: number, name: string): string {
   if (typeof value !== 'string' || !value.trim() || value.length > limit) throw new Error(`Invalid ${name}.`);
@@ -45,6 +51,33 @@ function validDay(day: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/u.test(day) && Number.isFinite(Date.parse(`${day}T00:00:00Z`))
     && new Date(`${day}T00:00:00Z`).toISOString().startsWith(day);
 }
+function validTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u.test(value)
+    && validDay(value.slice(0, 10)) && Number.isFinite(Date.parse(value));
+}
+function validReplyKey(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !/[\u0000-\u001f]/u.test(value);
+}
+function realTime(now: number): string {
+  if (!Number.isFinite(now)) throw new Error('Invalid archive time.');
+  const timestamp = new Date(now).toISOString();
+  if (!validTimestamp(timestamp)) throw new Error('Invalid archive time.');
+  return timestamp;
+}
+function removeRecords(data: ArchiveData, ids: Set<string>): void {
+  data.dreams = data.dreams.filter(dream => !ids.has(dream.id));
+  data.shares = data.shares.filter(share => !ids.has(share.recordId));
+  data.usageReceipts = data.usageReceipts.filter(receipt => !ids.has(receipt.recordId));
+}
+function pruneRecords(data: ArchiveData, now: number): string[] {
+  const ordinary = data.dreams.filter(dream => dream.tier === 'ordinary');
+  const expired = new Set(ordinary.filter(dream => now - Date.parse(dream.createdAt) > DREAM_RETENTION_MS).map(dream => dream.id));
+  const retained = ordinary.filter(dream => !expired.has(dream.id))
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  for (const dream of retained.slice(0, Math.max(0, retained.length - DREAM_MAX_ORDINARY_RECORDS))) expired.add(dream.id);
+  if (expired.size) removeRecords(data, expired);
+  return [...expired];
+}
 const alarmTime = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 const qqId = /^[1-9][0-9]{0,19}$/u;
 function validCursor(value: unknown, minimum = 0): boolean { return Number.isSafeInteger(value) && Number(value) >= minimum; }
@@ -56,16 +89,21 @@ export class DreamArchive {
   private load(): ArchiveData {
     if (this.data) return this.data;
     const file = join(this.dir, 'archive.json');
-    if (!existsSync(file)) return this.data = { version: 1, materials: [], dreams: [], collectionCounts: {}, daydreamAlarms: [], daydreamAlarmsMigrated: false, shares: [] };
+    if (!existsSync(file)) return this.data = { version: 1, materials: [], dreams: [], collectionCounts: {}, daydreamAlarms: [], daydreamAlarmsMigrated: false, shares: [], usageReceipts: [] };
     const raw = JSON.parse(readFileSync(file, 'utf8')) as StoredArchiveData;
     if (!raw || raw.version !== 1 || !Array.isArray(raw.materials) || !Array.isArray(raw.dreams)
       || raw.materials.some(m => !m || typeof m.id !== 'string' || typeof m.topic !== 'string' || m.tag !== '指定素材')
-      || raw.dreams.some(d => !d || typeof d.id !== 'string' || typeof d.text !== 'string' || !Array.isArray(d.sources)
+      || raw.dreams.some(d => !d || typeof d.id !== 'string' || !d.id || typeof d.text !== 'string' || !Array.isArray(d.sources)
+        || !validTimestamp(d.createdAt)
         || (d.title !== undefined && (typeof d.title !== 'string' || !d.title.trim() || d.title.length > DREAM_TITLE_MAX_LENGTH))
         || (d.titleSource !== undefined && d.titleSource !== 'summary' && d.titleSource !== 'legacy-excerpt')
+        || (d.score !== undefined && (!Number.isSafeInteger(d.score) || d.score < 0))
+        || (d.tier !== undefined && d.tier !== 'ordinary' && d.tier !== 'deep')
+        || (d.tier === 'deep' ? !validTimestamp(d.promotedAt) : d.promotedAt != null)
         || (d.kind !== undefined && d.kind !== 'sleep' && d.kind !== 'daydream')
         || (d.alarmId !== undefined && (typeof d.alarmId !== 'string' || !d.alarmId || d.alarmId.length > 100))
         || (d.topic !== undefined && (typeof d.topic !== 'string' || !d.topic.trim() || d.topic.length > 500)))
+      || new Set(raw.dreams.map(dream => dream.id)).size !== raw.dreams.length
       || (raw.collectionCounts !== undefined && (raw.collectionCounts === null || typeof raw.collectionCounts !== 'object'
         || Array.isArray(raw.collectionCounts) || Object.entries(raw.collectionCounts).some(([day, count]) => !validDay(day) || !Number.isSafeInteger(count) || count < 0)))
       || (raw.daydreamAlarmsMigrated !== undefined && typeof raw.daydreamAlarmsMigrated !== 'boolean')
@@ -83,12 +121,16 @@ export class DreamArchive {
         || (share.attemptAfterCursor !== undefined && !validCursor(share.attemptAfterCursor))
         || ((share.selectedGroupId === undefined && share.selectedPrivateId === undefined) !== (share.attemptAfterCursor === undefined))
         || (share.notifiedCursor !== undefined && !validCursor(share.notifiedCursor, 1)))
-        || new Set(raw.shares.map(share => share.recordId)).size !== raw.shares.length))) {
+        || new Set(raw.shares.map(share => share.recordId)).size !== raw.shares.length))
+      || (raw.usageReceipts !== undefined && (!Array.isArray(raw.usageReceipts) || raw.usageReceipts.some(receipt => !receipt
+        || typeof receipt.recordId !== 'string' || !raw.dreams.some(dream => dream.id === receipt.recordId) || !validReplyKey(receipt.replyKey))
+        || new Set(raw.usageReceipts.map(receipt => JSON.stringify([receipt.recordId, receipt.replyKey]))).size !== raw.usageReceipts.length))) {
       throw new Error('Unsupported or damaged dream archive. Restore archive.json from a backup.');
     }
     return this.data = { ...raw, collectionCounts: raw.collectionCounts ?? {}, daydreamAlarms: raw.daydreamAlarms ?? [],
-      daydreamAlarmsMigrated: raw.daydreamAlarmsMigrated ?? raw.daydreamAlarms !== undefined, shares: raw.shares ?? [], dreams: raw.dreams.map(d => ({ ...d,
+      daydreamAlarmsMigrated: raw.daydreamAlarmsMigrated ?? raw.daydreamAlarms !== undefined, shares: raw.shares ?? [], usageReceipts: raw.usageReceipts ?? [], dreams: raw.dreams.map(d => ({ ...d,
       title: d.title ?? legacyTitle(d), titleSource: d.title === undefined ? 'legacy-excerpt' : d.titleSource ?? 'summary',
+      score: d.score ?? 0, tier: d.tier ?? 'ordinary', promotedAt: d.promotedAt ?? null,
     })) };
   }
   private save(data: ArchiveData): void {
@@ -158,7 +200,7 @@ export class DreamArchive {
   append(text: string, materialIds: string[], sources: SearchResult[], now: number, title?: string,
     options: { kind?: DreamKind; alarmId?: string; topic?: string; queueShare?: boolean } = {}): DreamRecord {
     const id = randomUUID();
-    const item: DreamRecord = { id, createdAt: new Date(now).toISOString(),
+    const item: DreamRecord = { id, createdAt: realTime(now), score: 0, tier: 'ordinary', promotedAt: null,
       title: title === undefined ? legacyTitle({ text, id }) : textInput(title, DREAM_TITLE_MAX_LENGTH, 'dream title'),
       titleSource: title === undefined ? 'legacy-excerpt' : 'summary', text, materialIds: [...materialIds], sources: structuredClone(sources),
       ...(options.kind ? { kind: options.kind } : {}),
@@ -166,11 +208,40 @@ export class DreamArchive {
       ...(options.topic !== undefined ? { topic: textInput(options.topic, 500, 'daydream topic') } : {}) };
     const next = structuredClone(this.load()); next.dreams.push(item);
     if (options.queueShare) next.shares.push({ recordId: id });
+    pruneRecords(next, now);
     this.save(next); return structuredClone(item);
+  }
+  prune(now: number): string[] {
+    realTime(now);
+    const next = structuredClone(this.load());
+    const removed = pruneRecords(next, now);
+    if (removed.length) this.save(next);
+    return removed;
+  }
+  hasUsage(id: string, replyKey: string): boolean {
+    return this.load().usageReceipts.some(receipt => receipt.recordId === id && receipt.replyKey === replyKey);
+  }
+  /** The caller verifies delivery and relevance; only the opaque reply identity is persisted. */
+  markUsed(id: string, replyKey: string, now: number, threshold: number): { record: DreamRecord; incremented: boolean; promoted: boolean } {
+    const timestamp = realTime(now);
+    if (!validReplyKey(replyKey) || !Number.isSafeInteger(threshold) || threshold < 0) throw new Error('Invalid dream usage receipt or threshold.');
+    const next = structuredClone(this.load());
+    const record = next.dreams.find(dream => dream.id === id);
+    if (!record) throw new Error('Unknown dream record.');
+    if (record.tier === 'ordinary' && now - Date.parse(record.createdAt) > DREAM_RETENTION_MS) throw new Error('This dream record has expired.');
+    if (next.usageReceipts.some(receipt => receipt.recordId === id && receipt.replyKey === replyKey))
+      return { record: structuredClone(record), incremented: false, promoted: false };
+    if (!Number.isSafeInteger(record.score + 1)) throw new Error('Dream score exceeds the supported range.');
+    record.score++;
+    const promoted = record.tier === 'ordinary' && record.score > threshold;
+    if (promoted) { record.tier = 'deep'; record.promotedAt = timestamp; }
+    next.usageReceipts.push({ recordId: id, replyKey });
+    this.save(next);
+    return { record: structuredClone(record), incremented: true, promoted };
   }
   removeDream(id: string): void {
     const next = structuredClone(this.load());
-    next.dreams = next.dreams.filter(dream => dream.id !== id); next.shares = next.shares.filter(share => share.recordId !== id);
+    removeRecords(next, new Set([id]));
     this.save(next);
   }
   pendingShares(): PendingShare[] { return structuredClone(this.load().shares.filter(share => share.notifiedCursor === undefined)); }

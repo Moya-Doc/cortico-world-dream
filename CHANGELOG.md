@@ -1,4 +1,24 @@
-<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/model-text.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, src/archive.ts, webui/client.ts, webui/style.css, package.json -->
+<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/model-text.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, src/archive.ts, src/usage.ts, webui/client.ts, webui/style.css, package.json -->
+
+## 0.12.1
+
+- Retain ordinary dreams for 30 real days and at most 100 records. Check on startup, every minute, on archive tool reads and on append; remove their sources, shares and usage receipts together without refunding collection quotas or deleting designated topics.
+- Add score, tier and promotion time in the existing archive. Old records migrate to ordinary dreams with score zero; the retention policy applies on upgrade. Deep dreams are exempt from automatic cleanup and remain manually deletable.
+- Add `dream_mark_used` after `dream_read` prepares a current-topic reference. Verify official QQ sent-message records or accepted desktop utterances; deduplicate each reply per dream. Reading, generation, automatic dream sharing and console output do not score. Topic relevance remains Coo's judgment, and chat bodies are not copied into the archive.
+- Add the deep-dream threshold (default 3); strictly exceeding it promotes a record permanently. Expose score/tier in queries and reads and show a persistent deep-dream title badge. Merge new scoring rules into any custom environment prompt.
+- 普通梦境按现实时间保留 30 天、最多 100 份；启动时、每分钟、档案工具读取前和新增时检查。清理同时移除其来源、分享及计分去重项，不返还采集额度，不删除指定素材。
+- 在原档案增加分数、分类和晋升时间；旧记录兼容为普通梦境、0 分，升级后执行保留规则。深层梦境免于自动清理，仍可手动删除。
+- 新增 `dream_mark_used`，先由 `dream_read` 为当前话题准备凭证，再核对官方 QQ 发送记录或桌宠已接受发言；同一回复对同一梦境只加一次。读取、生成、自动梦话及控制台输出不计分；相关性由 Coo 判断，不将聊天正文写入档案。
+- 新增深层梦境阈值，默认 3，严格超过后永久晋升。检索和读取返回分数及分类，标题旁持续显示深层标签。自定义环境提示词需合并新增计分规则。
+
+## 0.12.0
+
+- Group collection choices into built-in methods and World extensions while retaining a single numbered priority order. Add optional official WebSearch, called by Coo; existing selections stay unchanged.
+- Hand off public queries to Coo to check and call `web_search`, then register actual results through `dream_web_search_result`. Bind each report to its active cycle and request; share existing URL deduplication and source quotas. Preserve model-reported provenance in dream sources. Missing tools, failures and empty results advance to the next selected method.
+- Keep provider selection and credentials in the official World. Dream does not discover or invoke other Worlds' tools; connection tests cannot verify this method. Merge the new instructions into any custom dream environment prompt before use.
+- 采集方式分为「内置」与「World 扩展」，保留统一的编号优先级。新增可选的「官方 WebSearch（由 Coo 调用）」，已有选择保持不变。
+- 将公开查询交给 Coo 检查并调用 `web_search`，再通过 `dream_web_search_result` 登记真实返回的素材。报告绑定当前梦境及请求，共用网址去重和来源额度；档案保留由模型转录的来源标记。工具不可用、失败或无结果时，继续下一种已选方式。
+- 提供商选择和密钥保留在官方 World。梦境不自动发现或调用其他 World 的工具，连接测试不验证此方式；使用前需将新规则合并到已保存的自定义梦境提示词。
 
 ## 0.11.1
 

@@ -2,7 +2,7 @@ import type { ConfigGroup, ConfigProperty } from 'cortico/core/types.ts';
 import type { Language } from 'cortico/core/language.ts';
 import { configLabels, strings } from './strings.ts';
 
-export type CollectionBackend = 'ego' | 'tavily' | 'browser';
+export type CollectionBackend = 'ego' | 'tavily' | 'browser' | 'websearch';
 
 export interface DreamConfigSection {
   enabled: boolean;
@@ -38,6 +38,7 @@ export interface DreamConfigSection {
   maxResults: number;
   maxSourcesPerDream: number;
   maxSourcesPerDay: number;
+  deepDreamThreshold: number;
 }
 
 export const DEFAULT_SEARCH_URL = 'https://html.duckduckgo.com/html/?q={query}&df=d';
@@ -52,7 +53,7 @@ export const DREAM_DEFAULTS: DreamConfigSection = {
   collectorOrder: null, backend: 'auto', egoExecutableFile: 'ego-browser', egoEnabled: false, egoSpaceName: '',
   egoRequestTimeoutMs: 45000, egoMaxChars: 16000, egoRestoreMinimized: true, egoConnectionMode: 'auto', egoHelperDir: '', browserExecutableFile: '',
   searchUrlTemplate: DEFAULT_SEARCH_URL, allowedDomains: DEFAULT_SEARCH_DOMAINS, timeoutMs: 30000, maxResults: 5,
-  maxSourcesPerDream: 5, maxSourcesPerDay: 20,
+  maxSourcesPerDream: 5, maxSourcesPerDay: 20, deepDreamThreshold: 3,
 };
 
 export function dreamConfigGroups(language: Language = 'zh'): ConfigGroup[] {
@@ -64,6 +65,7 @@ export function dreamConfigGroups(language: Language = 'zh'): ConfigGroup[] {
       'dreamMode', 'dreamProbability', 'maxDreamMinutes', 'daydreamEnabled',
     ] },
     { id: 'world:dream:collection', title: t.groupCollectionTitle, keys: ['maxSourcesPerDream', 'maxSourcesPerDay', 'timeoutMs', 'maxResults'] },
+    { id: 'world:dream:archive', title: t.archive, keys: ['deepDreamThreshold'] },
     { id: 'world:dream:ego', title: t.egoTitle, keys: [
       'egoExecutableFile', 'egoSpaceName', 'egoRequestTimeoutMs', 'egoMaxChars',
       'egoRestoreMinimized', 'egoConnectionMode', 'egoHelperDir',
@@ -73,17 +75,19 @@ export function dreamConfigGroups(language: Language = 'zh'): ConfigGroup[] {
     idleMinutes: [1, 1440], sleepMinutes: [1, 1440], dreamProbability: [0, 1],
     maxDreamMinutes: [1, 60], timeoutMs: [1000, 120000], maxResults: [1, 20],
     maxSourcesPerDream: [1, 20], maxSourcesPerDay: [1, 1000],
+    deepDreamThreshold: [0, 1000],
     egoRequestTimeoutMs: [5000, 120000], egoMaxChars: [1000, 60000],
   };
   const descriptions: Partial<Record<keyof DreamConfigSection, string>> = {
     daydreamEnabled: t.daydreamEnabledDescription,
+    deepDreamThreshold: t.deepDreamThresholdDescription,
   };
   return sections.map(({ id, title, keys }) => {
     const properties: Record<string, ConfigProperty> = {};
     for (const key of keys) {
       const value = DREAM_DEFAULTS[key];
       properties[`worlds.dream.${key}`] = {
-        type: ['egoRequestTimeoutMs', 'egoMaxChars', 'timeoutMs', 'maxResults', 'maxSourcesPerDream', 'maxSourcesPerDay'].includes(key) ? 'integer' : typeof value as 'boolean' | 'number' | 'string', title: names[key], 'x-hot': true,
+        type: ['egoRequestTimeoutMs', 'egoMaxChars', 'timeoutMs', 'maxResults', 'maxSourcesPerDream', 'maxSourcesPerDay', 'deepDreamThreshold'].includes(key) ? 'integer' : typeof value as 'boolean' | 'number' | 'string', title: names[key], 'x-hot': true,
         ...(descriptions[key] ? { description: descriptions[key] } : {}),
         ...(limits[key] ? { minimum: limits[key]![0], maximum: limits[key]![1] } : {}),
         ...(key === 'dreamMode' ? { enum: ['always', 'probability'] } : {}),

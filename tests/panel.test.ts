@@ -12,7 +12,7 @@ const panelCss = readFileSync(new URL('../webui/style.css', import.meta.url), 'u
 afterEach(() => { while (cleanup.length) cleanup.pop()!(); });
 
 function archiveRecord(id: string, text: string, title = 'A dream of discovery'): DreamRecord {
-  return { id, title, text, createdAt: '2026-01-02T12:00:00.000Z', materialIds: [], sources: [] };
+  return { id, title, text, createdAt: '2026-01-02T12:00:00.000Z', materialIds: [], sources: [], score: 0, tier: 'ordinary', promotedAt: null };
 }
 
 function harness(records: DreamRecord[] = [], backend: Pick<DreamPanelState, 'keyConfigured' | 'egoConfigured' | 'activeBackend'> = {
@@ -25,7 +25,7 @@ function harness(records: DreamRecord[] = [], backend: Pick<DreamPanelState, 'ke
   const state: DreamPanelState = {
     sleeping: false, sleepUntil: null, dreaming: false, cycleId: null, phase: 'awake',
     dreamKind: null, daydreamEnabled: true, daydreamAlarms: [],
-    browserConfigured: true, browserMissing: [],
+    browserConfigured: true, browserMissing: [], webSearchConfigured: true, webSearchMissing: [],
     readiness: { ready: backend.activeBackend !== null, backend: backend.activeBackend, missing: [] },
     collectorConfig: { ...collectorConfig({ ...DREAM_DEFAULTS }), collectorOrder: [] },
     connectionTest: { status: 'idle', backend: null, checkedAt: null, error: null, resultCount: null },
@@ -200,7 +200,7 @@ describe('Dream panel', () => {
 
   it('keeps configured methods unselected until the collection order is saved', async () => {
     const ui = harness([], { keyConfigured: true, egoConfigured: true, activeBackend: null });
-    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-collector-choice')).toHaveLength(3));
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-collector-choice')).toHaveLength(4));
     const checkboxes = [...ui.root.querySelectorAll<HTMLInputElement>('.dream-collector-selected')];
     expect(checkboxes.every(input => !input.checked && !input.disabled)).toBe(true);
     expect(ui.root.querySelectorAll('.dream-collector-choice [data-configured=true]')).toHaveLength(3);
@@ -219,9 +219,9 @@ describe('Dream panel', () => {
 
   it('orders selected methods, appends reselected methods and preserves edits and focus during polling', async () => {
     const ui = harness();
-    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-collector-choice')).toHaveLength(3));
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-collector-choice')).toHaveLength(4));
     ui.state.collectorConfig.collectorOrder = ['tavily', 'ego']; ui.poll();
-    const order = () => [...ui.root.querySelectorAll<HTMLElement>('.dream-collector-choice')].map(row => row.dataset.backend);
+    const order = () => [...ui.root.querySelectorAll<HTMLElement>('[data-group=builtin] .dream-collector-choice')].map(row => row.dataset.backend);
     const checkbox = (backend: string) => ui.root.querySelector<HTMLInputElement>(`.dream-collector-selected[name=${backend}]`)!;
     const move = (backend: string, direction: string) => ui.root.querySelector<HTMLButtonElement>(`[data-backend=${backend}] .dream-collector-${direction}`)!;
     await vi.waitFor(() => expect(order()).toEqual(['tavily', 'ego', 'browser']));
@@ -243,7 +243,7 @@ describe('Dream panel', () => {
 
   it('retains an unsaved empty selection after a failure and allows retrying it', async () => {
     const ui = harness();
-    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-collector-choice')).toHaveLength(3));
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-collector-choice')).toHaveLength(4));
     ui.state.collectorConfig.collectorOrder = ['browser']; ui.poll();
     const checkbox = ui.root.querySelector<HTMLInputElement>('.dream-collector-selected[name=browser]')!;
     await vi.waitFor(() => expect(checkbox.checked).toBe(true));
@@ -255,6 +255,39 @@ describe('Dream panel', () => {
     ui.rejectCollector(false); ui.submit('.dream-collector-order-form');
     await vi.waitFor(() => expect(ui.state.collectorConfig.collectorOrder).toEqual([]));
     expect(ui.savedPatch).toEqual({ collectorOrder: [] });
+  });
+
+  it('groups collectors without changing their shared priority and saves cross-group moves', async () => {
+    const ui = harness();
+    const t = strings('en');
+    const row = (backend: string) => ui.root.querySelector<HTMLElement>(`[data-backend=${backend}]`)!;
+    const rank = (backend: string) => row(backend).querySelector('.dream-collector-position')!.textContent;
+    const move = (backend: string, direction: string) => row(backend).querySelector<HTMLButtonElement>(`.dream-collector-${direction}`)!;
+    await vi.waitFor(() => expect(row('websearch').querySelector('.dream-websearch-state')?.textContent).toBe(t.webSearchCheck));
+    expect([...ui.root.querySelectorAll('.dream-collector-group legend')].map(node => node.textContent)).toEqual([t.collectorBuiltIn, t.collectorWorldExtensions]);
+    expect([...ui.root.querySelectorAll<HTMLElement>('[data-group=builtin] [data-backend]')].map(node => node.dataset.backend)).toEqual(['ego', 'tavily', 'browser']);
+    expect(row('websearch').closest('fieldset')?.dataset.group).toBe('world');
+    expect(row('websearch').querySelector<HTMLElement>('.dream-websearch-state')!.dataset.configured).toBe('unknown');
+    expect(row('websearch').textContent).not.toContain(t.keyPresent);
+    expect(ui.root.querySelector('.dream-websearch-hint')?.textContent).toBe(t.webSearchCheckHint);
+    ui.state.collectorConfig.collectorOrder = ['browser']; ui.poll();
+    await vi.waitFor(() => expect(rank('browser')).toBe('1'));
+    row('websearch').querySelector<HTMLInputElement>('input')!.click();
+    expect(rank('websearch')).toBe('2');
+    move('websearch', 'up').click();
+    expect(rank('websearch')).toBe('1'); expect(rank('browser')).toBe('2');
+    expect(move('websearch', 'up').disabled).toBe(true); expect(move('browser', 'down').disabled).toBe(true);
+    ui.poll(); await Promise.resolve();
+    expect(rank('websearch')).toBe('1');
+    ui.submit('.dream-collector-order-form');
+    await vi.waitFor(() => expect(ui.savedPatch).toEqual({ collectorOrder: ['websearch', 'browser'] }));
+    await vi.waitFor(() => expect(move('browser', 'up').disabled).toBe(false));
+    move('browser', 'up').click();
+    expect(rank('websearch')).toBe('2'); expect(rank('browser')).toBe('1');
+    expect(row('websearch').closest('fieldset')?.dataset.group).toBe('world');
+    expect(row('browser').closest('fieldset')?.dataset.group).toBe('builtin');
+    ui.submit('.dream-collector-order-form');
+    await vi.waitFor(() => expect(ui.savedPatch).toEqual({ collectorOrder: ['browser', 'websearch'] }));
   });
 
   it('shows the current fallback backend and renders previous failure reasons literally', async () => {
@@ -377,6 +410,19 @@ describe('Dream panel', () => {
     expect(ui.state.dreams).toEqual([]);
     expect(ui.state.materials).toEqual([]);
     expect(ui.state.collection.lastSuccessAt).toBeNull();
+  });
+
+  it('does not issue a panel connection test for an agent-called World collector', async () => {
+    const ui = harness([], { keyConfigured: false, egoConfigured: false, activeBackend: 'websearch' }, 'settings');
+    const t = strings('en');
+    const test = ui.root.querySelector<HTMLButtonElement>('.dream-test')!;
+    await vi.waitFor(() => expect(ui.root.querySelector('.dream-backend')?.textContent).toContain(t.webSearchTitle));
+    expect(test.disabled).toBe(true);
+    expect(ui.root.querySelector('.dream-test-hint')?.textContent).toBe(t.webSearchTestUnsupported);
+    test.click(); expect(ui.testCount).toBe(0);
+    ui.state.activeBackend = 'browser'; ui.state.readiness.backend = 'browser'; ui.poll();
+    await vi.waitFor(() => expect(test.disabled).toBe(false));
+    expect(ui.root.querySelector('.dream-test-hint')?.textContent).toBe(t.testUsesSavedConfig);
   });
 
   it('does not expose connection testing or its result in Sleep and dreams', async () => {
@@ -673,6 +719,51 @@ describe('Dream panel', () => {
     expect(item.open).toBe(false);
     title.click();
     expect(item.open).toBe(true);
+  });
+
+  it('keeps deep dream labels beside titles through disclosure, refresh and filtering', async () => {
+    const deep = { ...archiveRecord('deep', 'A silver ocean.'), score: DREAM_DEFAULTS.deepDreamThreshold + 1,
+      tier: 'deep' as const, promotedAt: '2026-01-03T12:00:00.000Z' };
+    const ordinary = archiveRecord('ordinary', 'A quiet forest.');
+    const ui = harness([deep, ordinary]);
+    const t = strings('en');
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-entry')).toHaveLength(2));
+    const item = ui.root.querySelector<HTMLDetailsElement>('.dream-entry')!;
+    const badge = item.querySelector<HTMLElement>('.dream-tier')!;
+    const title = item.querySelector<HTMLElement>('.dream-entry-title')!;
+    expect(badge.textContent).toBe(t.deepDreamLabel);
+    expect(title.nextElementSibling).toBe(badge);
+    expect(badge.closest('summary')).not.toBeNull();
+    expect(ui.root.querySelector('.dream-retention-hint')?.textContent).toBe(t.archiveRetentionHint);
+    expect(ui.root.querySelectorAll<HTMLElement>('.dream-tier')[1]!.hidden).toBe(true);
+    for (const open of [true, false, true]) {
+      title.click(); expect(item.open).toBe(open);
+      ui.poll(); await Promise.resolve();
+      expect(badge.hidden).toBe(false);
+      expect(ui.root.querySelector('.dream-entry')).toBe(item);
+      expect(item.querySelector('.dream-score')?.textContent).toBe(`${t.dreamScore} · ${deep.score}`);
+    }
+    ui.input('input[type=search]', 'forest'); ui.submit('.dream-section-header form');
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-entry')).toHaveLength(1));
+    ui.input('input[type=search]', ''); ui.submit('.dream-section-header form');
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-entry')).toHaveLength(2));
+    const restored = ui.root.querySelector<HTMLDetailsElement>('.dream-entry')!;
+    expect(restored.open).toBe(true);
+    expect(restored.querySelector<HTMLElement>('.dream-tier')!.hidden).toBe(false);
+  });
+
+  it('updates a promoted dream badge and score without closing the open record', async () => {
+    const record = archiveRecord('one', 'An observatory in the clouds.');
+    const ui = harness([record]);
+    await vi.waitFor(() => expect(ui.root.querySelectorAll('.dream-entry')).toHaveLength(1));
+    const item = ui.root.querySelector<HTMLDetailsElement>('.dream-entry')!;
+    item.querySelector('summary')!.click();
+    expect(item.querySelector<HTMLElement>('.dream-tier')!.hidden).toBe(true);
+    Object.assign(ui.state.dreams[0]!, { tier: 'deep', score: DREAM_DEFAULTS.deepDreamThreshold + 1, promotedAt: '2026-01-03T12:00:00.000Z' });
+    ui.poll();
+    await vi.waitFor(() => expect(item.querySelector<HTMLElement>('.dream-tier')!.hidden).toBe(false));
+    expect(item.open).toBe(true);
+    expect(item.querySelector('.dream-score')?.textContent).toBe(`${strings('en').dreamScore} · ${ui.state.dreams[0]!.score}`);
   });
 
   it('preserves the current disclosure state when polling before a queued toggle event', async () => {

@@ -9,12 +9,13 @@ import { nowIso } from 'cortico/core/util.ts';
 import { bounded, DREAM_DEFAULTS, DREAM_SECRET, dreamConfigGroups, qqConfig, qqConfigPatch, QQ_ID, splitList, type DreamConfigSection } from './config.ts';
 import { collectorConfig, collectorPatch, collectorReadiness, selectedBackends } from './collection.ts';
 import { DREAM_TITLE_MAX_LENGTH, DreamArchive, textInput, type DaydreamAlarm, type DreamKind } from './archive.ts';
-import { createSearchClient, SearchError, type SearchClient, type SearchOptions, type SearchResult } from './search.ts';
+import { createSearchClient, publicUrl, SearchError, type SearchClient, type SearchOptions, type SearchResult } from './search.ts';
 import { DreamEgoBrowser } from './ego-browser.ts';
 import type { EgoBridge, BridgeReceipt } from './ego-transport/index.ts';
 import { DREAM_EGO_TOOL_DECLS, DREAM_TOOL_DECLS, MODEL_TEXT, type DreamMessageReference } from './model-text.ts';
 import { egoBrowserErrorText, strings } from './strings.ts';
 import { localClock, sleepCommand } from './time.ts';
+import { DreamUsage, type DreamIncomingRef, type DreamReplyRef } from './usage.ts';
 
 export interface DreamWorldOptions {
   context: WorldContext<DreamConfigSection>;
@@ -29,6 +30,7 @@ interface Cycle {
   kind: DreamKind; alarm?: DaydreamAlarm;
   backends: SearchOptions['backend'][]; backendIndex: number; attempts: CollectionAttempt[];
   query?: string; materialId?: string;
+  webSearchRequest?: string;
   sources: Map<string, SearchResult & { materialId?: string }>;
 }
 interface PersistedState { version: 1; sleepUntil: number | null; scheduled: Record<string, string> }
@@ -43,7 +45,7 @@ interface ConnectionTest {
   status: 'idle' | 'testing' | 'ok' | 'error';
   backend: SearchOptions['backend'] | null;
   checkedAt: string | null;
-  error: Error | 'cancelled' | 'stopped' | 'busy' | 'unconfigured' | null;
+  error: Error | 'cancelled' | 'stopped' | 'busy' | 'unconfigured' | 'agent-required' | null;
   resultCount: number | null;
 }
 class BrowserCollectionError extends SearchError {
@@ -90,6 +92,8 @@ export class DreamWorld implements World {
   private referencedMessages = new Set<number>();
   private error: string | null = null;
   private stopped = true;
+  private nextArchiveCleanup = 0;
+  private usage: DreamUsage | null = null;
   private controlCursor = 0;
   /** A local message may wake mechanically before its explicit sleep intent is interpreted. */
   private localWakeCursor: number | null = null;
@@ -108,22 +112,31 @@ export class DreamWorld implements World {
     this.search = opts.search ?? createSearchClient(() => this.searchOptions());
   }
   private get cfg(): DreamConfigSection { return this.ctx.cfg; }
+  private maintainArchive(force = false): void {
+    const now = this.now();
+    if (!force && now < this.nextArchiveCleanup) return;
+    this.archive.prune(now);
+    this.nextArchiveCleanup = now + 60000;
+  }
   private collectionStatus(language: Language = 'zh') {
     return collectorReadiness(this.cfg, this.ctx.secret(DREAM_SECRET), language);
   }
   private backendMissing(backend: SearchOptions['backend']): string[] {
     const status = this.collectionStatus('en');
-    return backend === 'ego' ? status.egoMissing : backend === 'tavily' ? status.tavilyMissing : status.browserMissing;
+    return backend === 'ego' ? status.egoMissing : backend === 'tavily' ? status.tavilyMissing
+      : backend === 'websearch' ? status.webSearchMissing : status.browserMissing;
   }
   private cycleBackend(cycle: Cycle): SearchOptions['backend'] | null { return cycle.backends[cycle.backendIndex] ?? null; }
   private searchOptions(backend = this.collectionStatus().activeBackend): SearchOptions {
     if (!backend || this.backendMissing(backend).length) throw new SearchError('Complete the selected collection configuration before collecting dream materials.');
+    if (backend === 'websearch') throw new SearchError('The official web_search tool must be called by Coo.');
     return {
       backend, apiKey: backend === 'tavily' ? this.ctx.secret(DREAM_SECRET) : '',
       timeoutMs: this.cfg.timeoutMs, maxResults: this.cfg.maxResults,
     };
   }
   envPromptVars(): Record<string, string> {
+    this.maintainArchive();
     return { 'dream.state': JSON.stringify({ sleeping: this.sleepUntil !== null, sleepUntil: this.sleepUntil ? new Date(this.sleepUntil).toISOString() : null,
       cycleId: this.cycle?.id ?? null, dreamKind: this.cycle?.kind ?? null, qqOwners: splitList(this.cfg.qqUsers), sharing: this.sharingState() }),
       'dream.index': JSON.stringify(this.archive.query('', '', 10).map(({ id, createdAt, title }) => ({
@@ -175,13 +188,14 @@ export class DreamWorld implements World {
     }
   }
   private modelState() {
+    this.maintainArchive();
     return { sleeping: this.sleepUntil !== null, sleepUntil: this.sleepUntil ? new Date(this.sleepUntil).toISOString() : null,
       dreaming: this.cycle !== null, cycleId: this.cycle?.id ?? null, date: localClock(this.now(), this.ctx.timezone).day,
       dreamKind: this.cycle?.kind ?? null, daydreamAlarm: this.cycle?.alarm ?? null,
       materials: this.cycle?.kind === 'daydream' ? [] : this.archive.materials(), backend: this.cycle ? this.cycleBackend(this.cycle) : this.collectionStatus().activeBackend, quota: this.quota(),
       collectorOrder: this.cycle?.backends ?? selectedBackends(this.cfg), attempts: this.collection.attempts,
       collectionQuery: this.cycle?.query ?? null, collectionMaterialId: this.cycle?.materialId ?? null,
-      qqOwners: splitList(this.cfg.qqUsers), sharing: this.sharingState(),
+      qqOwners: splitList(this.cfg.qqUsers), sharing: this.sharingState(), deepDreamThreshold: this.cfg.deepDreamThreshold,
       browser: { connected: this.ego.state().connected, halted: this.ego.state().halted, code: this.ego.state().code,
         lastUnknownOutcome: this.ego.state().lastUnknownOutcome }, error: this.error };
   }
@@ -229,9 +243,11 @@ export class DreamWorld implements World {
       const content = previous && !previous.content.includes(result.content)
         ? `${previous.content}\n${result.content}`.slice(0, 60000) : previous?.content ?? result.content.slice(0, 60000);
       const source = { ...result, url: key, content,
+        ...((result.provenance ?? previous?.provenance) ? { provenance: result.provenance ?? previous?.provenance } : {}),
         ...((previous?.materialId ?? materialId) ? { materialId: previous?.materialId ?? materialId } : {}) };
       sources.set(id, source);
-      accepted.set(id, { id, title: source.title, url: key, content, ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}) });
+      accepted.set(id, { id, title: source.title, url: key, content, ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}),
+        ...(source.provenance ? { provenance: source.provenance } : {}) });
       if (!existing) count++;
     }
     if (accepted.size && (count || materialId)) this.archive.recordCollection(quota.date, count, materialId);
@@ -246,6 +262,7 @@ export class DreamWorld implements World {
     return this.sleepUntil !== null ? 'sleeping' : 'awake';
   }
   state(language: Language = 'zh') {
+    this.maintainArchive();
     const t = strings(language);
     const status = this.collectionStatus(language);
     const testError = this.connectionTest.error;
@@ -260,12 +277,15 @@ export class DreamWorld implements World {
       collection: { ...this.collection, attempts: this.collection.attempts.map(attempt => ({ ...attempt })), lastSuccessAt: this.lastCollectionSuccess, error: this.collectionError(this.collection.error, language) },
       connectionTest: { ...this.connectionTest, error: testError === 'cancelled' ? t.testCancelled : testError === 'stopped' ? t.collectorStopped
         : testError === 'busy' ? t.collectionBusy : testError === 'unconfigured' ? `${t.collectionNotConfigured} ${t.missingConfiguration}: ${status.readiness.missing.join(', ')}`
+        : testError === 'agent-required' ? t.webSearchTestUnsupported
         : this.collectionError(testError, language) },
     };
   }
   async start(host: WorldHost): Promise<void> {
     if (!this.stopped) return;
+    this.maintainArchive(true);
     this.host = host; this.stopped = false; this.cursor = this.firstCursor = this.controlCursor = host.store.latestCursor(); this.lastActivity = this.now();
+    this.usage = new DreamUsage(host.store, this.now);
     this.localWakeCursor = null;
     await this.ego.start();
     const file = join(this.archive.dir, 'state.json');
@@ -285,6 +305,7 @@ export class DreamWorld implements World {
   }
   async stop(): Promise<void> {
     this.stopped = true; this.transition++; this.localWakeCursor = null;
+    this.usage?.reset(); this.usage = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     this.cycle?.controller.abort(); this.cycle = null;
@@ -383,6 +404,7 @@ export class DreamWorld implements World {
     while (!this.stopped && this.host && this.cursor < this.host.store.latestCursor());
   }
   private async runTick(): Promise<void> {
+    this.maintainArchive();
     const end = this.host!.store.latestCursor();
     while (this.cursor < end) {
       const to = Math.min(end, this.cursor + 256);
@@ -445,6 +467,7 @@ export class DreamWorld implements World {
   async sleep(minutes: unknown = this.cfg.sleepMinutes, cursor = this.host?.store.latestCursor() ?? 0): Promise<void> {
     this.requireRunning();
     const duration = bounded(minutes, 1, 1440, 'sleep duration');
+    this.usage?.reset();
     const generation = ++this.transition;
     this.localWakeCursor = null;
     this.controlCursor = Math.max(this.controlCursor, cursor);
@@ -469,6 +492,7 @@ export class DreamWorld implements World {
   }
   private async beginDream(kind: DreamKind = 'sleep', alarm?: DaydreamAlarm): Promise<void> {
     if (this.stopped || this.changingCollector || this.cycle || !this.quota(null).remaining) return;
+    this.usage?.reset();
     const controller = new AbortController();
     const until = this.now() + bounded(this.cfg.maxDreamMinutes, 1, 60, 'dream time limit') * 60000;
     const cycle: Cycle = { id: randomUUID(), controller, until, kind, ...(alarm ? { alarm: structuredClone(alarm), query: alarm.topic } : {}),
@@ -569,6 +593,12 @@ export class DreamWorld implements World {
         this.activeCycle(cycle.id); signal.throwIfAborted();
         return this.collectionResult(cycle, [], { needsSearch: true, nextBackend: backend });
       }
+      if (backend === 'websearch') {
+        cycle.webSearchRequest = randomUUID();
+        collection.status = 'idle'; collection.error = null;
+        return this.collectionResult(cycle, [], { needsWebSearch: true, tool: 'web_search',
+          requestId: cycle.webSearchRequest, query: cycle.query, instructions: MODEL_TEXT.webSearchRequested });
+      }
       const options = this.searchOptions(backend);
       options.maxResults = Math.min(options.maxResults, remaining);
       let results: SearchResult[];
@@ -601,6 +631,42 @@ export class DreamWorld implements World {
       return this.attemptCollection(cycle, signal, collection);
     });
   }
+  private async webSearchResult(args: Record<string, unknown>, call: ToolCallContext) {
+    await this.tick();
+    const cycle = this.activeCycle(args.cycleId);
+    if (this.cycleBackend(cycle) !== 'websearch') throw new Error('This dream is not using official WebSearch. Check dream_status.');
+    if (!cycle.webSearchRequest || args.requestId !== cycle.webSearchRequest)
+      throw new Error('Use the current requestId returned by dream_search for official WebSearch.');
+    const failure = args.failure;
+    if (failure !== undefined && (typeof failure !== 'string' || !['unavailable', 'failed', 'empty'].includes(failure) || args.sources !== undefined))
+      throw new Error('Report either sources or one WebSearch failure: unavailable, failed or empty.');
+    let results: SearchResult[] = [];
+    if (failure === undefined) {
+      if (!Array.isArray(args.sources) || args.sources.length < 1 || args.sources.length > 20)
+        throw new Error('Report 1–20 public sources, or report an empty WebSearch result.');
+      results = args.sources.map((item: unknown) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Invalid WebSearch source.');
+        const source = item as Record<string, unknown>;
+        const title = textInput(source.title, 300, 'WebSearch source title');
+        const content = textInput(source.content, 12000, 'WebSearch source content');
+        const url = publicUrl(textInput(source.url, 8192, 'WebSearch source URL')).href;
+        if (/[\u0000]/u.test(title + content)) throw new Error('Invalid WebSearch source text.');
+        return { title, url, content, provenance: { tool: 'web_search', reportedBy: 'model' } };
+      });
+    }
+    return this.withCollection(cycle, call, async (signal, collection) => {
+      if (failure !== undefined) {
+        delete cycle.webSearchRequest;
+        this.failBackend(cycle, collection, new SearchError(MODEL_TEXT.webSearchFailure(failure as 'unavailable' | 'failed' | 'empty')));
+        return this.attemptCollection(cycle, signal, collection);
+      }
+      const sources = this.registerSources(cycle, results, cycle.materialId);
+      if (!sources.length) throw this.quotaError(cycle);
+      delete cycle.webSearchRequest;
+      collection.status = 'ok'; collection.error = null; this.error = null;
+      return this.collectionResult(cycle, sources, { reportedBy: 'model', tool: 'web_search' });
+    });
+  }
   private async testConnection(language: Language): Promise<void> {
     const t = strings(language);
     if (this.testTask || this.collectionTask || this.changingCollector) throw new Error(t.collectionBusy);
@@ -609,6 +675,10 @@ export class DreamWorld implements World {
     this.connectionTest = test;
     if (this.stopped || !readiness.ready) {
       test.status = 'error'; test.error = this.stopped ? 'stopped' : 'unconfigured'; test.checkedAt = new Date(this.now()).toISOString();
+      return;
+    }
+    if (readiness.backend === 'websearch') {
+      test.status = 'error'; test.error = 'agent-required'; test.checkedAt = new Date(this.now()).toISOString();
       return;
     }
     const controller = new AbortController();
@@ -722,8 +792,28 @@ export class DreamWorld implements World {
     await this.offerShares();
     return saved;
   }
+  private async readDream(args: Record<string, unknown>) {
+    if (args.replyTo !== undefined) await this.tick();
+    this.maintainArchive(true);
+    const record = this.archive.get(textInput(args.id, 100, 'dream id'));
+    if (!record) return { error: 'Dream not found.' };
+    if (args.replyTo === undefined) return record;
+    this.requireRunning();
+    if (this.sleepUntil !== null || this.cycle) throw new Error('Prepare a dream reference only while awake with no active dream.');
+    return { ...record, usage: this.usage!.prepare(record, args.replyTo as DreamIncomingRef) };
+  }
+  private async markUsed(args: Record<string, unknown>) {
+    await this.tick(); this.requireRunning(); this.maintainArchive(true);
+    if (this.sleepUntil !== null || this.cycle) throw new Error('Dream usage can be reported only while awake with no active dream.');
+    const id = textInput(args.id, 100, 'dream id');
+    if (!this.archive.get(id)) throw new Error('Dream not found.');
+    const threshold = this.cfg.deepDreamThreshold;
+    if (!Number.isSafeInteger(threshold) || threshold < 0 || threshold > 1000) throw new Error('Invalid deep dream threshold.');
+    const verified = this.usage!.verify(id, textInput(args.usageToken, 100, 'dream usage token'), args.reply as DreamReplyRef);
+    return this.archive.markUsed(id, verified.replyKey, this.now(), threshold);
+  }
   tools(): ToolDef[] {
-    return [...DREAM_TOOL_DECLS, ...DREAM_EGO_TOOL_DECLS].map(spec => ({ ...spec, interruptible: spec.name === 'dream_search' || spec.name.startsWith('dream_ego_'), handler: async (args, call) => {
+    return [...DREAM_TOOL_DECLS, ...DREAM_EGO_TOOL_DECLS].map(spec => ({ ...spec, interruptible: spec.name === 'dream_search' || spec.name === 'dream_web_search_result' || spec.name.startsWith('dream_ego_'), handler: async (args, call) => {
       if (spec.name.startsWith('dream_ego_')) return this.browse(spec.name.slice('dream_ego_'.length), args, call);
       let value: unknown;
       switch (spec.name) {
@@ -750,14 +840,17 @@ export class DreamWorld implements World {
         }
         case 'dream_add_material': this.recentMessage(args.eventCursor); value = this.archive.add(args.topic, this.now()); break;
         case 'dream_search': value = await this.collect(args, call); break;
+        case 'dream_web_search_result': value = await this.webSearchResult(args, call); break;
         case 'dream_record': value = await this.record(args); break;
         case 'dream_query': {
+          this.maintainArchive(true);
           const date = args.date === undefined ? '' : String(args.date);
           if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid date.');
           const limit = Math.trunc(bounded(args.limit ?? 20, 1, 50, 'query limit'));
-          value = this.archive.query(String(args.query ?? ''), '', 10000).filter(d => !date || localClock(Date.parse(d.createdAt), this.ctx.timezone).day === date).slice(0, limit).map(d => ({ id: d.id, createdAt: d.createdAt, kind: d.kind ?? null, title: d.title, titleSource: d.titleSource, text: d.text.slice(0, 300) })); break;
+          value = this.archive.query(String(args.query ?? ''), '', Number.MAX_SAFE_INTEGER).filter(d => !date || localClock(Date.parse(d.createdAt), this.ctx.timezone).day === date).slice(0, limit).map(d => ({ id: d.id, createdAt: d.createdAt, kind: d.kind ?? null, title: d.title, titleSource: d.titleSource, score: d.score, tier: d.tier, promotedAt: d.promotedAt, text: d.text.slice(0, 300) })); break;
         }
-        case 'dream_read': value = this.archive.get(String(args.id)) ?? { error: 'Dream not found.' }; break;
+        case 'dream_read': value = await this.readDream(args); break;
+        case 'dream_mark_used': value = await this.markUsed(args); break;
       }
       return JSON.stringify(value);
     } }));
@@ -765,13 +858,14 @@ export class DreamWorld implements World {
   webUi(language: Language = 'zh'): WorldWebUiDecl {
     const s = strings(language);
     const readiness = this.collectionStatus(language).readiness;
-    const backendName = readiness.backend === 'ego' ? s.egoTitle : readiness.backend === 'tavily' ? 'Tavily' : readiness.backend === 'browser' ? s.browserTitle : s.noBackend;
+    const backendName = readiness.backend === 'ego' ? s.egoTitle : readiness.backend === 'tavily' ? 'Tavily' : readiness.backend === 'browser' ? s.browserTitle
+      : readiness.backend === 'websearch' ? s.webSearchTitle : s.noBackend;
     const promptName = language === 'zh' || language === 'zh-Hant' ? 'ENV_PROMPT.zh.md' : 'ENV_PROMPT.en.md';
     const deploymentPath = join(this.ctx.botDir, 'worlds', 'dream', promptName);
     return {
       label: s.name, config: dreamConfigGroups(language),
       lamps: [{ label: s.collectionConfigTitle, state: readiness.ready ? 'online' : 'offline',
-        hint: `${s.activeBackend}: ${backendName}${readiness.missing.length ? `; ${s.missingConfiguration}: ${readiness.missing.join(', ')}` : ''}` }],
+        hint: `${s.activeBackend}: ${backendName}${readiness.backend === 'websearch' ? `; ${s.webSearchCheckHint}` : ''}${readiness.missing.length ? `; ${s.missingConfiguration}: ${readiness.missing.join(', ')}` : ''}` }],
       panels: [{ id: 'dream', title: s.panelTitle, getMethods: ['state', 'query'] },
         { id: 'collection-settings', title: s.collectionConfigTitle, getMethods: ['state'] },
         { id: 'qq-talk', title: s.qqTalkTitle, getMethods: ['state'] }],
