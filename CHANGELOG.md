@@ -1,5 +1,14 @@
 <!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/model-text.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, src/archive.ts, src/usage.ts, webui/client.ts, webui/style.css, package.json -->
 
+## 0.12.2
+
+- Normalize base QQ, Final and ProMAX messages for Dream control and references. Validate deferred origins, deduplicate platform messages, and exclude historical, self, aggregated and space events from control.
+- Select QQ sending from available tool declarations: base drafts/confirmation or Final/ProMAX direct `qq_send`. Preserve Dream recipient permissions and check sleep state before sending.
+- Verify ProMAX confirmed send events for reference scores. Final 0.6.33 has no verifiable successful-send event and cannot score; ambiguous recall records also prevent credit. Document the supported contracts and limits in both READMEs and the QQ panel.
+- 统一基础版 QQ、Final 与 ProMAX 的梦境控制及消息引用；核对延迟投递的原消息，按平台消息去重，历史、自己发出、聚合和空间事件不触发控制。
+- 根据可用工具声明选择基础版草稿确认流程，或 Final／ProMAX 的 `qq_send` 直接发送；保留梦话接收人权限，发送前检查睡眠状态。
+- ProMAX 可通过已确认的发送事件核验引用计分；Final 0.6.33 缺少可验证的发送成功事件，暂不计分，撤回证据不明确时也拒绝计分。中英文说明与 QQ 面板注明兼容契约及限制。
+
 ## 0.12.1
 
 - Retain ordinary dreams for 30 real days and at most 100 records. Check on startup, every minute, on archive tool reads and on append; remove their sources, shares and usage receipts together without refunding collection quotas or deleting designated topics.

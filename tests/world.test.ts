@@ -36,9 +36,10 @@ async function tool(w: DreamWorld, name: string, args: Record<string, unknown> =
   return JSON.parse(await w.tools().find(t => t.name === name)!.handler(args, ctx) as string);
 }
 async function message(body: string, source = 'desktop-pet', user = '7', group = false) {
+  const messageId = 10000 + host.store.latestCursor();
   return host.pushEvent({ source, type: `${source}.message`, senderKey: user, origin: source === 'console' ? 'internal' : 'external', ts: new Date(now).toISOString(),
-    text: source === 'qq' ? `#1 [test 01:00] User(${user}): ${body}` : body,
-    meta: source === 'qq' ? { user_id: Number(user), conv: { kind: group ? 'group' : 'private' } } : { text: body, body },
+    text: source === 'qq' ? `#${messageId} [test 01:00] User(${user}): ${body}` : body,
+    meta: source === 'qq' ? { message_id: messageId, user_id: Number(user), conv: { kind: group ? 'group' : 'private', id: group ? 8001 : Number(user) } } : { text: body, body },
   });
 }
 async function collect(w: DreamWorld, materialId?: string) {

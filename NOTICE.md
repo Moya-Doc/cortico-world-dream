@@ -1,4 +1,4 @@
-<!-- Owner: package.json, pnpm-lock.yaml, LICENSE, src/index.ts, src/definition.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts -->
+<!-- Owner: package.json, pnpm-lock.yaml, LICENSE, src/index.ts, src/definition.ts, src/qq.ts, src/usage.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts -->
 
 # Sources and licenses / 来源与许可证
 
@@ -24,6 +24,16 @@ Versions below are resolved in `pnpm-lock.yaml`. Installed dependencies retain t
 | @types/jsdom | 21.1.7 | MIT | [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/jsdom) |
 
 ## External integrations / 外部接口
+
+The QQ adapter in `src/qq.ts` and receipt verification in `src/usage.ts` are independently written against these event and tool contracts. No Final or ProMAX implementation is copied or bundled:
+
+`src/qq.ts` 的 QQ 适配与 `src/usage.ts` 的回执核验根据以下事件和工具契约独立编写，不复制或打包 Final、ProMAX 的实现：
+
+| Contract reference / 契约参考 | Version / 版本 | Source license / 来源许可证 |
+| --- | --- | --- |
+| [Cortico QQ World](https://github.com/Pal-AI-Lab/Cortico/blob/cb9ddbd685bcccba1f29905098648f46a79b3862/src/worlds/qq/world.ts) | Commit `cb9ddbd` | MIT |
+| [cortico-world-qq-final](https://github.com/hth768/cortico-world-qq-final/blob/00a1f15e85f71b22590c60e8beeab8a570cb74b7/src/world.ts) | 0.6.33 / `00a1f15` | MIT |
+| [cortico-world-qq-promax](https://github.com/Kpect10086/QQ-ProMAX/blob/360e37f5b83c2e0479069dd8886bc029c56ab732/src/world.ts) | 0.2.0 / `360e37f` | AGPL-3.0-or-later |
 
 Public search URL construction and HTML/RSS result parsers in `src/web-search.ts` are adapted from [danhuangpaii/cortico-world-netlingo, `src/search.ts` at commit 38fea2eed308fc3a1f4865312d53a582b98279bf](https://github.com/danhuangpaii/cortico-world-netlingo/blob/38fea2eed308fc3a1f4865312d53a582b98279bf/src/search.ts), under the [MIT License](https://github.com/danhuangpaii/cortico-world-netlingo/blob/38fea2eed308fc3a1f4865312d53a582b98279bf/LICENSE), Copyright (c) 2026 cortico-world-netlingo contributors. The full copyright and license are retained in the `src/web-search.ts` header. This adaptation uses sequential 360, Sogou, Bing RSS and DuckDuckGo requests, with bounded response sizes and timeouts, cancellation, URL validation and per-result source registration. It does not include that project's hotboards, video or Bilibili features.
 

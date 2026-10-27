@@ -118,7 +118,7 @@ describe('sleep interruption policy', () => {
     const message = qq(host, now(), body, user); await world.tick(); await world.tick();
     expect(world.state()).toMatchObject({ sleeping: true, dreaming: true, cycleId }); expect(events(host, 'woke')).toEqual([]);
     expect(events(host, 'sleep_reply')).toHaveLength(1);
-    expect(events(host, 'sleep_reply')[0]).toMatchObject({ origin: 'internal', meta: { eventCursor: message.cursor } });
+    expect(events(host, 'sleep_reply')[0]).toMatchObject({ origin: 'external', meta: { eventCursor: message.cursor } });
     expect(host.store.range({ source: 'qq' })).toHaveLength(1);
   });
 

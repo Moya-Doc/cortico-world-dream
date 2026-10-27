@@ -16,6 +16,7 @@ import { DREAM_EGO_TOOL_DECLS, DREAM_TOOL_DECLS, MODEL_TEXT, type DreamMessageRe
 import { egoBrowserErrorText, strings } from './strings.ts';
 import { localClock, sleepCommand } from './time.ts';
 import { DreamUsage, type DreamIncomingRef, type DreamReplyRef } from './usage.ts';
+import { isQQSource, parseQQMessage, qqWithdrawal, QQ_SOURCES, type QQMessage } from './qq.ts';
 
 export interface DreamWorldOptions {
   context: WorldContext<DreamConfigSection>;
@@ -90,6 +91,9 @@ export class DreamWorld implements World {
   private scheduled: Record<string, string> = {};
   private handled = new Set<number>();
   private referencedMessages = new Set<number>();
+  private qqSeen = new Map<string, QQMessage>();
+  private qqDeliveries = new Map<number, number>();
+  private sleepReplies = new Set<number>();
   private error: string | null = null;
   private stopped = true;
   private nextArchiveCleanup = 0;
@@ -286,6 +290,13 @@ export class DreamWorld implements World {
     this.maintainArchive(true);
     this.host = host; this.stopped = false; this.cursor = this.firstCursor = this.controlCursor = host.store.latestCursor(); this.lastActivity = this.now();
     this.usage = new DreamUsage(host.store, this.now);
+    this.qqSeen.clear(); this.qqDeliveries.clear(); this.sleepReplies.clear();
+    for (const source of QQ_SOURCES) {
+      for (const event of host.store.range({ source, fromTs: new Date(this.now() - 300000).toISOString(), toCursor: this.firstCursor })) {
+        const message = parseQQMessage(event, host.store);
+        if (message && !this.qqSeen.has(message.key)) this.qqSeen.set(message.key, message);
+      }
+    }
     this.localWakeCursor = null;
     await this.ego.start();
     const file = join(this.archive.dir, 'state.json');
@@ -320,28 +331,28 @@ export class DreamWorld implements World {
     writeFileSync(temp, JSON.stringify({ version: 1, sleepUntil: this.sleepUntil, scheduled: this.scheduled }), { mode: 0o600 });
     renameSync(temp, file);
   }
-  private async emit(kind: string, text: string, interrupt = false, meta?: EventEnvelope['meta']): Promise<EventEnvelope | undefined> {
+  private async emit(kind: string, text: string, interrupt = false, meta?: EventEnvelope['meta'], origin: EventEnvelope['origin'] = 'internal'): Promise<EventEnvelope | undefined> {
     if (!this.host || this.stopped) return;
     return this.host.pushEvent({
-      type: `dream.${kind}`, source: this.id, senderKey: this.id, origin: 'internal', ts: nowIso(this.ctx.timezone, new Date(this.now())),
+      type: `dream.${kind}`, source: this.id, senderKey: this.id, origin, ts: nowIso(this.ctx.timezone, new Date(this.now())),
       text: `${text}\nDream state: ${JSON.stringify({ sleeping: this.sleepUntil !== null, sleepUntil: this.sleepUntil ? new Date(this.sleepUntil).toISOString() : null,
         cycleId: this.cycle?.id ?? null, dreamKind: this.cycle?.kind ?? null })}`, ...(meta ? { meta } : {}),
     }, { trigger: interrupt ? 'interrupt' : 'flush' });
   }
   private qqMessage(e: EventEnvelope) {
-    if (e.source !== 'qq' || e.type !== 'qq.message' || e.origin !== 'external') return null;
-    const meta = e.meta ?? {};
-    const userId = String(meta.user_id);
-    const conv = meta.conv as { kind?: string; id?: string | number } | undefined;
-    const delimiter = `(${userId}): `;
-    const offset = e.text.indexOf(delimiter);
-    if (offset < 0) return null;
-    const body = e.text.slice(offset + delimiter.length);
-    // QQ currently exposes rendered mentions, not the original at segments.
-    const mention = /@[^\r\n@]+?\(你\)/u;
-    return { body: body.replace(mention, '').trim(), mentioned: mention.test(body),
-      addressed: conv?.kind === 'private' || mention.test(body), owner: splitList(this.cfg.qqUsers).includes(userId),
-      groupId: conv?.kind === 'group' ? String(conv.id ?? '') : null, messageId: String(meta.message_id ?? '') };
+    const delivery = this.qqDeliveries.get(e.cursor);
+    const event = delivery === undefined ? e : this.host?.store.get(delivery);
+    const message = event && parseQQMessage(event, this.host?.store);
+    if (!message || message.cursor <= this.firstCursor || !this.recentTimestamp(message.ts)
+      || (this.host && qqWithdrawal(message, this.host.store))) return null;
+    const seen = this.qqSeen.get(message.key);
+    if (seen && seen.deliveryCursor !== message.deliveryCursor) return null;
+    return { ...message, owner: splitList(this.cfg.qqUsers).includes(message.senderId),
+      groupId: message.kind === 'group' ? message.id : null };
+  }
+  private recentTimestamp(ts: string): boolean {
+    const at = Date.parse(ts);
+    return Number.isFinite(at) && this.now() - at <= 300000 && at <= this.now() + 1000;
   }
   private message(e: EventEnvelope): { body: string; addressed: boolean } | null {
     if (e.origin !== 'external' && !(e.source === 'console' && e.type === 'console.message' && e.origin === 'internal')) return null;
@@ -359,38 +370,37 @@ export class DreamWorld implements World {
     const message = e && this.eligibleRecentMessage(e);
     if (!e || !message)
       throw new Error('The message is not recent or its sender is not authorized.');
-    return { event: e, body: message.body };
+    const qq = this.qqMessage(e);
+    return { event: qq ? this.host!.store.get(qq.cursor)! : e, body: message.body };
   }
   private eligibleRecentMessage(event: EventEnvelope): { body: string; addressed: boolean } | null {
-    const message = this.message(event), at = Date.parse(event.ts);
-    return event.cursor > this.firstCursor && message?.addressed && Number.isFinite(at)
-      && this.now() - at <= 300000 && at <= this.now() + 1000 ? message : null;
+    const message = this.message(event), qq = this.qqMessage(event);
+    return (qq?.cursor ?? event.cursor) > this.firstCursor && message?.addressed
+      && (qq !== null || event.contextDelivery !== 'archive-only') && this.recentTimestamp(qq?.ts ?? event.ts) ? message : null;
   }
   private async referenceMessage(event: EventEnvelope): Promise<void> {
-    if (this.stopped || !this.host || event.contextDelivery === 'archive-only' || event.cursor < this.controlCursor
-      || this.handled.has(event.cursor) || this.referencedMessages.has(event.cursor)) return;
+    const qq = this.qqMessage(event), cursor = qq?.cursor ?? event.cursor;
+    if (this.stopped || !this.host || event.contextDelivery === 'archive-only' || cursor < this.controlCursor
+      || this.handled.has(cursor) || this.referencedMessages.has(cursor)) return;
     const message = this.eligibleRecentMessage(event);
     if (!message) return;
-    const platformId = event.source === 'qq' ? event.meta?.message_id : undefined;
-    const messageId = typeof platformId === 'number' && Number.isSafeInteger(platformId) ? String(platformId)
-      : typeof platformId === 'string' && /^-?[0-9]{1,20}$/u.test(platformId) ? platformId : undefined;
-    const reference: DreamMessageReference = { eventCursor: event.cursor, source: event.source, type: event.type,
-      ts: event.ts, body: message.body, ...(messageId !== undefined ? { messageId } : {}) };
+    const reference: DreamMessageReference = { eventCursor: cursor, source: event.source, type: event.type,
+      ts: qq?.ts ?? event.ts, body: message.body, ...(qq ? { messageId: qq.messageId, target: qq.target, senderId: qq.senderId } : {}) };
     const host = this.host, before = host.store.latestCursor();
-    this.referencedMessages.add(event.cursor);
+    this.referencedMessages.add(cursor);
     try {
       await host.pushEvent({ type: 'dream.message_ref', source: this.id, senderKey: this.id, origin: 'external',
         ts: nowIso(this.ctx.timezone, new Date(this.now())), text: MODEL_TEXT.messageRef(reference),
-        meta: { eventCursor: event.cursor } }, { trigger: 'flush' });
+        meta: { eventCursor: cursor } }, { trigger: 'flush' });
     } catch (error) {
-      if (!host.store.range({ source: this.id, fromCursor: before + 1 }).some(item => item.type === 'dream.message_ref' && item.meta?.eventCursor === event.cursor))
-        this.referencedMessages.delete(event.cursor);
+      if (!host.store.range({ source: this.id, fromCursor: before + 1 }).some(item => item.type === 'dream.message_ref' && item.meta?.eventCursor === cursor))
+        this.referencedMessages.delete(cursor);
       throw error;
     }
   }
   private newerInteraction(cursor: number): boolean {
-    return ['desktop-pet', 'console', 'qq'].some(source => this.host!.store.range({ source, fromCursor: cursor + 1 }).some(event =>
-      this.message(event)?.addressed || (event.source === 'desktop-pet' && event.type === 'desktop-pet.touch'
+    return ['desktop-pet', 'console', ...QQ_SOURCES].some(source => this.host!.store.range({ source, fromCursor: cursor + 1 }).some(event =>
+      ((this.qqMessage(event)?.cursor ?? event.cursor) > cursor && this.eligibleRecentMessage(event)?.addressed) || (event.source === 'desktop-pet' && event.type === 'desktop-pet.touch'
         && event.origin === 'external' && (event.meta?.touch as { woke?: boolean } | undefined)?.woke === true)));
   }
   async tick(): Promise<void> {
@@ -408,7 +418,7 @@ export class DreamWorld implements World {
     const end = this.host!.store.latestCursor();
     while (this.cursor < end) {
       const to = Math.min(end, this.cursor + 256);
-      const events = ['desktop-pet', 'console', 'qq'].flatMap(source => this.host!.store.range({ fromCursor: this.cursor + 1, toCursor: to, source })).sort((a, b) => a.cursor - b.cursor);
+      const events = ['desktop-pet', 'console', ...QQ_SOURCES].flatMap(source => this.host!.store.range({ fromCursor: this.cursor + 1, toCursor: to, source })).sort((a, b) => a.cursor - b.cursor);
       for (const e of events) {
         if (this.stopped) return;
         if (e.source === 'desktop-pet' && e.origin === 'external' && e.type === 'desktop-pet.touch') {
@@ -416,27 +426,40 @@ export class DreamWorld implements World {
           const touch = e.meta?.touch as { woke?: boolean } | undefined;
           if (touch?.woke === true && e.cursor > this.controlCursor && (this.sleepUntil !== null || this.cycle)) await this.wake(MODEL_TEXT.touchWake, e.cursor);
         }
-        const message = this.message(e);
         const qq = this.qqMessage(e);
-        if (this.sleepUntil !== null && e.cursor > this.controlCursor && qq?.mentioned && qq.groupId && qq.messageId
+        if (isQQSource(e.source) && !qq) continue;
+        if (qq) {
+          this.qqSeen.set(qq.key, qq); this.qqDeliveries.set(qq.cursor, qq.deliveryCursor);
+        }
+        const message = this.eligibleRecentMessage(e), cursor = qq?.cursor ?? e.cursor;
+        if (this.sleepUntil !== null && cursor > this.controlCursor && qq?.mentioned && qq.groupId && !this.sleepReplies.has(cursor)
           && !(qq.owner && sleepCommand(qq.body))) {
-          await this.emit('sleep_reply', MODEL_TEXT.sleepReply(e.cursor), false, { eventCursor: e.cursor });
+          this.sleepReplies.add(cursor);
+          const host = this.host!, before = host.store.latestCursor();
+          try {
+            await this.emit('sleep_reply', MODEL_TEXT.sleepReply({ eventCursor: cursor, source: qq.source, type: e.type,
+              ts: qq.ts, body: qq.body, messageId: qq.messageId, target: qq.target, senderId: qq.senderId }), false, { eventCursor: cursor }, 'external');
+          } catch (error) {
+            if (!host.store.range({ source: this.id, fromCursor: before + 1 }).some(item => item.type === 'dream.sleep_reply' && item.meta?.eventCursor === cursor))
+              this.sleepReplies.delete(cursor);
+            throw error;
+          }
         }
         if (!message?.addressed) continue;
         this.lastActivity = this.now();
-        if (this.localWakeCursor !== null && e.cursor > this.localWakeCursor) this.localWakeCursor = null;
-        if (e.cursor <= this.controlCursor) {
-          if (e.cursor === this.localWakeCursor) await this.referenceMessage(e);
+        if (this.localWakeCursor !== null && cursor > this.localWakeCursor) this.localWakeCursor = null;
+        if (cursor <= this.controlCursor) {
+          if (cursor === this.localWakeCursor) await this.referenceMessage(e);
           continue;
         }
         const command = sleepCommand(message.body);
         if (command?.kind === 'sleep') {
-          if (!this.handled.has(e.cursor)) { this.handled.add(e.cursor); await this.sleep(command.minutes, e.cursor); }
-        } else if ((e.source !== 'qq' || this.sleepUntil === null || command?.kind === 'wake') && (this.sleepUntil !== null || this.cycle || (command?.kind === 'wake' && this.testController))) {
+          if (!this.handled.has(cursor)) { this.handled.add(cursor); await this.sleep(command.minutes, cursor); }
+        } else if ((!isQQSource(e.source) || this.sleepUntil === null || command?.kind === 'wake') && (this.sleepUntil !== null || this.cycle || (command?.kind === 'wake' && this.testController))) {
           const generation = this.transition + 1;
-          await this.wake(command?.kind === 'wake' ? MODEL_TEXT.userWake : MODEL_TEXT.messageWake, e.cursor);
-          if (e.source !== 'qq' && !command && !this.stopped && this.transition === generation)
-            this.localWakeCursor = e.cursor;
+          await this.wake(command?.kind === 'wake' ? MODEL_TEXT.userWake : MODEL_TEXT.messageWake, cursor);
+          if (!isQQSource(e.source) && !command && !this.stopped && this.transition === generation)
+            this.localWakeCursor = cursor;
         }
         if (!command) await this.referenceMessage(e);
       }
@@ -446,6 +469,9 @@ export class DreamWorld implements World {
     }
     if (this.stopped) return;
     if (this.handled.size > 1024) this.handled = new Set([...this.handled].filter(c => c > end - 1024));
+    for (const [key, message] of this.qqSeen) if (!this.recentTimestamp(message.ts)) {
+      this.qqSeen.delete(key); this.qqDeliveries.delete(message.cursor); this.sleepReplies.delete(message.cursor);
+    }
     const now = this.now();
     if (this.sleepUntil !== null && now >= this.sleepUntil) await this.wake(MODEL_TEXT.deadline);
     if (this.cycle && now >= this.cycle.until) await this.cancelDream(MODEL_TEXT.dreamDeadline);
@@ -819,6 +845,7 @@ export class DreamWorld implements World {
       switch (spec.name) {
         case 'dream_status': value = this.modelState(); break;
         case 'dream_sleep': {
+          await this.tick();
           this.requireRunning(); const { event, body } = this.recentMessage(args.eventCursor); const command = sleepCommand(body);
           if (command?.kind === 'wake') throw new Error('A wake command cannot authorize sleep.');
           const minutes = command?.kind === 'sleep' ? command.minutes : bounded(args.durationMinutes ?? this.cfg.sleepMinutes, 1, 1440, 'sleep duration');
@@ -830,15 +857,16 @@ export class DreamWorld implements World {
           value = this.modelState(); break;
         }
         case 'dream_wake': {
+          await this.tick();
           const { event, body } = this.recentMessage(args.eventCursor);
           const command = sleepCommand(body);
           if (command?.kind === 'sleep') throw new Error('A sleep command cannot authorize waking.');
-          if (event.source === 'qq' && this.sleepUntil !== null && command?.kind !== 'wake' && args.explicitWakeRequest !== true)
+          if (isQQSource(event.source) && this.sleepUntil !== null && command?.kind !== 'wake' && args.explicitWakeRequest !== true)
             throw new Error('QQ waking requires an explicit owner wake request. A message or mention alone does not authorize waking.');
           if (event.cursor > this.controlCursor) await this.wake(MODEL_TEXT.userWake, event.cursor);
           value = this.modelState(); break;
         }
-        case 'dream_add_material': this.recentMessage(args.eventCursor); value = this.archive.add(args.topic, this.now()); break;
+        case 'dream_add_material': await this.tick(); this.recentMessage(args.eventCursor); value = this.archive.add(args.topic, this.now()); break;
         case 'dream_search': value = await this.collect(args, call); break;
         case 'dream_web_search_result': value = await this.webSearchResult(args, call); break;
         case 'dream_record': value = await this.record(args); break;
