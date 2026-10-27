@@ -1,4 +1,13 @@
-<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/model-text.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, src/archive.ts, src/usage.ts, webui/client.ts, webui/style.css, package.json -->
+<!-- Owner: src/notice.ts, src/world.ts, src/collection.ts, src/config.ts, src/model-text.ts, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, src/archive.ts, src/usage.ts, webui/client.ts, webui/style.css, package.json -->
+
+## 0.12.3
+
+- Add deferred first-activation and version-update events. Persist notification state per deployment, postpone delivery during sleep or an active dream, and avoid repeat notices after reload or downgrade.
+- Ask Coo for a brief local reminder without sending QQ messages or writing Memory. No notification card or recurring environment-prompt content is added. Rendering records delivery, not confirmed speech.
+- Update the English and Chinese package introductions to include base QQ, QQ Final and QQ ProMAX. Final 0.6.33 still lacks verifiable send receipts and cannot score dream references.
+- 新增首次启用与版本更新的延迟通知，按部署保存通知状态，睡眠及梦境任务期间暂缓，同版本重新加载或降级不重复提醒。
+- 提示 Coo 在本地简短说明，不发送 QQ 消息、不写入 Memory；不增加通知卡片，也不在环境提示词中持续加入通知。渲染记录不代表已确认发言。
+- 更新中英文扩展简介，注明 QQ 基础版、QQ Final 与 QQ ProMAX 均已适配；Final 0.6.33 仍缺少可验证的发送回执，不计梦境引用分数。
 
 ## 0.12.2
 

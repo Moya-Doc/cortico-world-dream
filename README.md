@@ -1,4 +1,4 @@
-<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/archive.ts, src/usage.ts, src/qq.ts, src/model-text.ts, src/ENV_PROMPT.en.md, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts, webui/style.css, package.json -->
+<!-- Owner: src/notice.ts, src/world.ts, src/collection.ts, src/config.ts, src/archive.ts, src/usage.ts, src/qq.ts, src/model-text.ts, src/ENV_PROMPT.en.md, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts, webui/style.css, package.json -->
 
 # cortico-world-dream
 
@@ -10,6 +10,14 @@ A standalone Cortico World for sleep, dream material collection and a searchable
 
 
 Dream events ask Coo to use the existing `pet_act` tool for its sleep/standing pose and follow the sleep reply rules. The World controls its own deadlines, searches and records. Poses and replies depend on Coo following the environment prompt; other Worlds' messages are not blocked. This extension does not write to Memory. Optional dream sharing asks Coo to consider sharing a dream through the existing QQ tools.
+
+## First-use and update reminders
+
+On first activation in a deployment, Dream sends Coo one introduction event. A later version sends one update event containing the bundled summaries since the last notified version. Existing `archive.json` or `state.json` without notification metadata receives the current version's update reminder. Sleep and active dreams postpone delivery until awake and idle; the notification adds no page controls.
+
+Coo is asked to check `dream_status`, give a brief local `pet_say` reminder in the person's language, and leave QQ and Memory untouched. Speech depends on Coo and an available local speech tool. The event remains in conversation history under the host's normal retention rules; it is not added to the environment prompt on every turn.
+
+`<dataDir>/dream/notice.json` persists the pending first-use classification and the last version rendered for delivery. Reloading the same version or downgrading does not replay it. Rendering records delivery, not confirmation that Coo spoke or the person heard it. Reinstalling with the deployment data preserved keeps this record.
 
 ## Install from a local directory
 

@@ -1,4 +1,4 @@
-<!-- Owner: src/world.ts, src/collection.ts, src/config.ts, src/archive.ts, src/usage.ts, src/qq.ts, src/model-text.ts, src/ENV_PROMPT.zh.md, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts, webui/style.css, package.json -->
+<!-- Owner: src/notice.ts, src/world.ts, src/collection.ts, src/config.ts, src/archive.ts, src/usage.ts, src/qq.ts, src/model-text.ts, src/ENV_PROMPT.zh.md, src/search.ts, src/web-search.ts, src/ego-browser.ts, src/ego-runtime.mjs, src/ego-transport/, webui/client.ts, webui/style.css, package.json -->
 
 # cortico-world-dream
 
@@ -10,6 +10,14 @@
 
 
 梦境事件提示 Coo 调用已有的 `pet_act`，切换睡眠或站立动作，并遵守睡眠期间的回复规则。本 World 控制自己的时限、搜索和记录。动作与回复依赖 Coo 遵守环境提示词；它不会拦截其他 World 的消息。本扩展不直接写入 Memory；可选的「梦话」功能提示 Coo 考虑通过已有 QQ 工具分享梦境。
+
+## 首次启用与更新提醒
+
+在一个部署中首次启用梦境时，向 Coo 投递一次使用介绍。后续版本升级时，投递一次更新事件，包含从上次已通知版本起随包提供的更新摘要。已有 `archive.json` 或 `state.json`、但没有通知记录的部署，收到当前版本的更新提醒。睡眠和梦境任务期间暂缓，清醒且没有梦境任务后投递；不增加页面控件。
+
+提示 Coo 先检查 `dream_status`，再用用户的语言通过本地 `pet_say` 简短说明，不发送 QQ 消息，也不写入 Memory。实际发言依赖 Coo 和可用的本地发言工具。事件按宿主规则保留在会话历史中，不会在每轮环境提示词中重复加入。
+
+`<dataDir>/dream/notice.json` 保存待投递的首次使用分类和上次渲染投递的版本。同版本重新加载或降级不重复提醒。记录表示事件已渲染投递，不代表 Coo 已发言或用户已阅读；保留部署数据重新安装时，该记录继续有效。
 
 ## 从本机目录安装
 

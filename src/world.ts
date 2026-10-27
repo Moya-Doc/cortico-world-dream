@@ -15,6 +15,7 @@ import type { EgoBridge, BridgeReceipt } from './ego-transport/index.ts';
 import { DREAM_EGO_TOOL_DECLS, DREAM_TOOL_DECLS, MODEL_TEXT, type DreamMessageReference } from './model-text.ts';
 import { egoBrowserErrorText, strings } from './strings.ts';
 import { localClock, sleepCommand } from './time.ts';
+import { DreamNotice } from './notice.ts';
 import { DreamUsage, type DreamIncomingRef, type DreamReplyRef } from './usage.ts';
 import { isQQSource, parseQQMessage, qqWithdrawal, QQ_SOURCES, type QQMessage } from './qq.ts';
 
@@ -68,6 +69,7 @@ export class DreamWorld implements World {
   private readonly now: () => number;
   private readonly random: () => number;
   private readonly archive: DreamArchive;
+  private readonly notice: DreamNotice;
   private readonly search: SearchClient;
   private readonly ego: DreamEgoBrowser;
   private browserHalted = false;
@@ -109,6 +111,7 @@ export class DreamWorld implements World {
     if (this.cfg.collectorOrder === null) this.ctx.persist({ collectorOrder: selectedBackends(this.cfg) });
     this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
+    this.notice = new DreamNotice(join(this.ctx.dataDir, 'dream'));
     this.archive = new DreamArchive(join(this.ctx.dataDir, 'dream'));
     this.archive.migrateDaydreamAlarms(splitList(this.cfg.daydreamTimes), this.now());
     this.ego = new DreamEgoBrowser({ config: () => this.cfg, dataDir: this.archive.dir, botDir: this.ctx.botDir, bridge: opts.egoBridge,
@@ -311,10 +314,13 @@ export class DreamWorld implements World {
       } else if (saved.sleepUntil) { this.sleepUntil = saved.sleepUntil; await this.wake(MODEL_TEXT.expiredOffline); }
     }
     await this.offerShares();
+    try { this.notice.start(); this.offerNotice(); }
+    catch (error) { this.notice.stop(); host.log.warn('Dream notice unavailable', { error: String(error) }); }
     this.timer = setInterval(() => { void this.tick().catch(() => { this.error = 'Dream timer failed; inspect the extension configuration.'; }); }, this.opts.pollMs ?? 500);
     this.timer.unref();
   }
   async stop(): Promise<void> {
+    this.notice.stop();
     this.stopped = true; this.transition++; this.localWakeCursor = null;
     this.usage?.reset(); this.usage = null;
     if (this.timer) clearInterval(this.timer);
@@ -323,6 +329,9 @@ export class DreamWorld implements World {
     this.testController?.abort();
     await Promise.allSettled([this.search.close(), this.ego.stop(), this.testTask, this.collectionTask, this.shareTask]);
     this.host = null;
+  }
+  private offerNotice(): void {
+    if (this.host) this.notice.offer(this.host, () => !this.stopped && this.sleepUntil === null && this.cycle === null);
   }
   private saveState(): void {
     mkdirSync(this.archive.dir, { recursive: true, mode: 0o700 });
@@ -489,6 +498,7 @@ export class DreamWorld implements World {
     }
     await this.offerShares();
     if (this.cfg.idleEnabled && this.sleepUntil === null && !this.cycle && now - this.lastActivity >= this.cfg.idleMinutes * 60000) await this.sleep();
+    this.offerNotice();
   }
   async sleep(minutes: unknown = this.cfg.sleepMinutes, cursor = this.host?.store.latestCursor() ?? 0): Promise<void> {
     this.requireRunning();
